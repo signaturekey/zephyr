@@ -1,0 +1,128 @@
+version: 1
+
+profile: standard
+language: auto
+
+limits:
+  max_parallel_reviewers: 4
+  max_roles_standard: 15
+  max_roles_thorough: 15
+  max_final_findings: 8
+
+roles:
+  code-reviewer:
+    enabled: true
+  architect-reviewer:
+    enabled: true
+  golang-expert:
+    enabled: true
+  typescript-expert:
+    enabled: true
+  frontend-expert:
+    enabled: true
+  skill-authoring-expert:
+    enabled: true
+  reliability-expert:
+    enabled: true
+  messaging-expert:
+    enabled: true
+  infrastructure-expert:
+    enabled: true
+  storage-expert:
+    enabled: true
+  security-auditor:
+    enabled: true
+  sql-expert:
+    enabled: true
+  contract-reviewer:
+    enabled: true
+  qa-expert:
+    enabled: true
+  code-simplifier:
+    enabled: true
+
+routing:
+  - when:
+      paths: ["**/*.go"]
+    add_roles: ["golang-expert"]
+  - when:
+      paths: ["**/*.ts", "**/*.tsx"]
+    add_roles: ["typescript-expert"]
+  - when:
+      paths: ["**/*.tsx", "**/*.jsx", "**/*.css", "**/*.scss", "**/*.less"]
+    add_roles: ["frontend-expert"]
+  - when:
+      paths: ["SKILL.md", "**/SKILL.md", "**/skills/**", "template/**"]
+    add_roles: ["skill-authoring-expert"]
+  - when:
+      paths: ["**/resilience/**", "**/*retry*.*", "**/*circuit*.*"]
+    add_roles: ["reliability-expert"]
+  - when:
+      paths: ["**/kafka/**", "**/messaging/**", "**/queues/**", "**/databus/**"]
+    add_roles: ["messaging-expert"]
+  - when:
+      paths: ["**/Dockerfile", "**/Dockerfile.*", "**/k8s/**", "**/kubernetes/**", "**/helm/**", "**/charts/**", ".github/workflows/**", ".gitlab-ci.yml", "**/teamcity/**"]
+    add_roles: ["infrastructure-expert"]
+  - when:
+      paths: ["**/redis/**", "**/cache/**", "**/elasticsearch/**", "**/opensearch/**", "**/search/**"]
+    add_roles: ["storage-expert"]
+  - when:
+      paths: ["migrations/**", "**/*.sql"]
+    add_roles: ["sql-expert"]
+  - when:
+      paths: ["brief/**", "**/openapi/**", "**/*.proto", "**/*.pb.go"]
+    add_roles: ["contract-reviewer"]
+
+  - when:
+      signals: ["sql"]
+    add_roles: ["sql-expert"]
+
+  - when:
+      signals: ["contract"]
+    add_roles: ["contract-reviewer"]
+  - when:
+      signals: ["typescript"]
+    add_roles: ["typescript-expert"]
+  - when:
+      signals: ["frontend"]
+    add_roles: ["frontend-expert"]
+  - when:
+      signals: ["skill-authoring"]
+    add_roles: ["skill-authoring-expert"]
+  - when:
+      signals: ["reliability"]
+    add_roles: ["reliability-expert"]
+  - when:
+      signals: ["messaging"]
+    add_roles: ["messaging-expert"]
+  - when:
+      signals: ["infrastructure"]
+    add_roles: ["infrastructure-expert"]
+  - when:
+      signals: ["storage"]
+    add_roles: ["storage-expert"]
+  - when:
+      signals: ["security"]
+    add_roles: ["security-auditor"]
+  - when:
+      signals: ["architecture", "multiple-services", "new-module"]
+    add_roles: ["architect-reviewer"]
+  - when:
+      signals: ["observable-behavior", "tests"]
+    add_roles: ["qa-expert"]
+  - when:
+      signals: ["large-complexity-delta", "duplication"]
+    add_roles: ["code-simplifier"]
+
+restricted_paths:
+  - "vendor/**"
+  - "**/*_mock.go"
+  - "internal/generated/**"
+  - "generated/**"
+
+redaction:
+  enabled: true
+  deny_patterns:
+    - "**/.env*"
+    - "**/*secret*"
+    - "**/*.pem"

@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "id": "09-plan-implementation-mismatch",
+  "plan_item": 9,
+  "title": "Plan and implementation mismatch",
+  "description": "The plan requires a three-state optional value, while the implementation collapses it into bool.",
+  "mode": "alignment",
+  "source": "working-tree",
+  "files": [
+    {
+      "path": "model/options.go",
+      "content": "package model\n\ntype Options struct {\n\tPublished bool `json:\"published\"`\n}\n"
+    }
+  ],
+  "changed_files": ["model/options.go"],
+  "plan": {
+    "path": "REVIEW_SPEC.md",
+    "content": "# Publication options\n\nThe API must distinguish an omitted published value from explicit false and explicit true.\n"
+  },
+  "force_include": ["architect-reviewer"],
+  "reviewer_roles": ["code-reviewer", "architect-reviewer", "golang-expert"],
+  "candidates": [
+    {
+      "id": "architect-reviewer-001",
+      "role": "architect-reviewer",
+      "severity": "P1",
+      "category": "requirements-alignment",
+      "title": "bool collapses omitted and explicit false",
+      "location": {"file": "model/options.go", "line_start": 4, "line_end": 4, "symbol": "Options.Published"},
+      "evidence": {
+        "code": "Published bool",
+        "execution_path": "JSON decoding leaves both an absent published field and published=false as the zero value false",
+        "violated_invariant": "The implementation must preserve all three states required by the plan",
+        "requirement_source": "REVIEW_SPEC.md Publication options",
+        "falsifier_checked": "The field has no pointer, presence bit, custom unmarshaler, or wrapper type"
+      },
+      "impact": "Callers cannot request explicit false without being confused with omission, so update semantics diverge from the plan.",
+      "recommendation": "Represent presence separately from the boolean value.",
+      "confidence": 0.99,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "architect-reviewer-001",
+      "verdict": "accepted",
+      "final_severity": "P1",
+      "reason_code": "plan-implementation-conflict",
+      "reason": "The snapshotted plan requires three states and the concrete representation has only two.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [{"id": "architect-reviewer-001", "severity": "P1", "source_roles": ["architect-reviewer"], "duplicate_ids": []}],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": false
+  }
+}

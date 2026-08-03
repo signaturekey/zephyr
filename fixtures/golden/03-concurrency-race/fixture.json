@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "id": "03-concurrency-race",
+  "plan_item": 3,
+  "title": "Race and concurrent map access",
+  "description": "Concurrent readers and writers access a Go map without synchronization.",
+  "mode": "implementation",
+  "source": "working-tree",
+  "files": [
+    {
+      "path": "cache/cache.go",
+      "content": "package cache\n\ntype Cache struct { values map[string]string }\n\nfunc (c *Cache) Put(key, value string) {\n\tc.values[key] = value\n}\n\nfunc (c *Cache) Get(key string) string {\n\treturn c.values[key]\n}\n"
+    }
+  ],
+  "changed_files": ["cache/cache.go"],
+  "plan": null,
+  "reviewer_roles": ["code-reviewer", "storage-expert", "golang-expert"],
+  "candidates": [
+    {
+      "id": "golang-expert-001",
+      "role": "golang-expert",
+      "severity": "P1",
+      "category": "concurrency",
+      "title": "Cache map is accessed concurrently without a lock",
+      "location": {"file": "cache/cache.go", "line_start": 6, "line_end": 10, "symbol": "Cache"},
+      "evidence": {
+        "code": "c.values[key] = value; return c.values[key]",
+        "execution_path": "Put and Get can execute in separate goroutines against the same Cache instance",
+        "violated_invariant": "A Go map must not be read while another goroutine writes it without synchronization",
+        "requirement_source": null,
+        "falsifier_checked": "The type contains no mutex and the methods do not require or assert external locking"
+      },
+      "impact": "Production can hit a data race or fatal concurrent map read/write.",
+      "recommendation": "Protect the map with a documented synchronization strategy.",
+      "confidence": 0.97,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "golang-expert-001",
+      "verdict": "accepted",
+      "final_severity": "P1",
+      "reason_code": "evidence-complete",
+      "reason": "Both unsynchronized access paths and the shared mutable map are present.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [{"id": "golang-expert-001", "severity": "P1", "source_roles": ["golang-expert"], "duplicate_ids": []}],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": false
+  }
+}

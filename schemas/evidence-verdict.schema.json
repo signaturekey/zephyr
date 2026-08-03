@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zephyr.local/schemas/v1/evidence-verdict.schema.json",
+  "title": "Zephyr evidence verdict envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "run_id", "verdicts"],
+  "properties": {
+    "version": { "const": 1 },
+    "run_id": { "$ref": "#/$defs/runID" },
+    "verdicts": {
+      "type": "array",
+      "maxItems": 250,
+      "items": { "$ref": "#/$defs/verdict" }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "runID": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "\\S"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2", "P3"]
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_id", "verdict", "final_severity", "reason_code", "reason", "duplicate_of"],
+      "properties": {
+        "candidate_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S" },
+        "verdict": {
+          "type": "string",
+          "enum": ["accepted", "rejected", "downgraded", "duplicate", "needs-human"]
+        },
+        "final_severity": {
+          "oneOf": [
+            { "$ref": "#/$defs/severity" },
+            { "type": "null" }
+          ]
+        },
+        "reason_code": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" },
+        "duplicate_of": {
+          "oneOf": [
+            { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "verdict": { "const": "duplicate" } }, "required": ["verdict"] },
+          "then": {
+            "properties": {
+              "final_severity": { "type": "null" },
+              "duplicate_of": { "$ref": "#/$defs/nonEmptyString" }
+            }
+          },
+          "else": { "properties": { "duplicate_of": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "verdict": { "enum": ["accepted", "downgraded"] } }, "required": ["verdict"] },
+          "then": { "properties": { "final_severity": { "$ref": "#/$defs/severity" } } }
+        },
+        {
+          "if": { "properties": { "verdict": { "const": "rejected" } }, "required": ["verdict"] },
+          "then": { "properties": { "final_severity": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "verdict": { "const": "needs-human" } }, "required": ["verdict"] },
+          "then": { "properties": { "final_severity": { "type": "null" } } }
+        }
+      ]
+    }
+  }
+}

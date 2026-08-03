@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "id": "02-context-loss",
+  "plan_item": 2,
+  "title": "Lost context.Context",
+  "description": "A request-scoped context is replaced before a downstream call.",
+  "mode": "implementation",
+  "source": "working-tree",
+  "files": [
+    {
+      "path": "client/load.go",
+      "content": "package client\n\nimport \"context\"\n\ntype Store interface { Load(context.Context, string) error }\n\nfunc Load(ctx context.Context, store Store, id string) error {\n\treturn store.Load(context.Background(), id)\n}\n"
+    }
+  ],
+  "changed_files": ["client/load.go"],
+  "plan": null,
+  "reviewer_roles": ["code-reviewer", "golang-expert"],
+  "candidates": [
+    {
+      "id": "golang-expert-001",
+      "role": "golang-expert",
+      "severity": "P1",
+      "category": "context-propagation",
+      "title": "Cancellation and deadlines are discarded",
+      "location": {"file": "client/load.go", "line_start": 8, "line_end": 8, "symbol": "Load"},
+      "evidence": {
+        "code": "store.Load(context.Background(), id)",
+        "execution_path": "A cancelled request enters Load, which constructs a live background context for Store.Load",
+        "violated_invariant": "Request cancellation and deadline must propagate to blocking downstream work",
+        "requirement_source": null,
+        "falsifier_checked": "Verified Store.Load receives no other cancellation channel or deadline"
+      },
+      "impact": "Downstream work can continue after the request ends and consume resources indefinitely.",
+      "recommendation": "Pass the received ctx to Store.Load.",
+      "confidence": 0.99,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "golang-expert-001",
+      "verdict": "accepted",
+      "final_severity": "P1",
+      "reason_code": "evidence-complete",
+      "reason": "The replacement with context.Background is explicit on the only downstream path.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [{"id": "golang-expert-001", "severity": "P1", "source_roles": ["golang-expert"], "duplicate_ids": []}],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": false
+  }
+}

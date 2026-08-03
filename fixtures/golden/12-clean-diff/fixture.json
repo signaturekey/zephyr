@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "id": "12-clean-diff",
+  "plan_item": 12,
+  "title": "Clean diff without mandatory findings",
+  "description": "A small pure helper has explicit boundary behavior and produces a valid empty reviewer result.",
+  "mode": "implementation",
+  "source": "working-tree",
+  "files": [
+    {
+      "path": "math/clamp.go",
+      "content": "package mathx\n\nfunc Clamp(value, minimum, maximum int) int {\n\tif value < minimum { return minimum }\n\tif value > maximum { return maximum }\n\treturn value\n}\n"
+    }
+  ],
+  "changed_files": ["math/clamp.go"],
+  "plan": null,
+  "reviewer_roles": ["code-reviewer", "golang-expert"],
+  "candidates": [],
+  "verdicts": [],
+  "expected": {
+    "precheck_accepted": 0,
+    "precheck_rejected": 0,
+    "final": [],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": true
+  }
+}

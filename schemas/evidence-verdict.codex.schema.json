@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zephyr.local/schemas/v1/evidence-verdict.codex.schema.json",
+  "title": "Zephyr evidence verdict Codex output envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "run_id", "verdicts"],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "run_id": { "$ref": "#/$defs/runID" },
+    "verdicts": {
+      "type": "array",
+      "maxItems": 250,
+      "items": { "$ref": "#/$defs/verdict" }
+    }
+  },
+  "$defs": {
+    "runID": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "\\S"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2", "P3"]
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_id", "verdict", "final_severity", "reason_code", "reason", "duplicate_of"],
+      "properties": {
+        "candidate_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S" },
+        "verdict": {
+          "type": "string",
+          "enum": ["accepted", "rejected", "downgraded", "duplicate", "needs-human"]
+        },
+        "final_severity": {
+          "anyOf": [
+            { "$ref": "#/$defs/severity" },
+            { "type": "null" }
+          ]
+        },
+        "reason_code": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" },
+        "duplicate_of": {
+          "anyOf": [
+            { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S" },
+            { "type": "null" }
+          ]
+        }
+      }
+    }
+  }
+}

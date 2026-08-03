@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "id": "01-local-functional-go-bug",
+  "plan_item": 1,
+  "title": "Local functional Go bug",
+  "description": "A boundary condition gives an eligible order no discount.",
+  "mode": "implementation",
+  "source": "working-tree",
+  "files": [
+    {
+      "path": "checkout/discount.go",
+      "content": "package checkout\n\nfunc Discount(total int) int {\n\tif total > 100 {\n\t\treturn 10\n\t}\n\treturn 0\n}\n"
+    }
+  ],
+  "changed_files": ["checkout/discount.go"],
+  "plan": null,
+  "reviewer_roles": ["code-reviewer", "golang-expert"],
+  "candidates": [
+    {
+      "id": "code-reviewer-001",
+      "role": "code-reviewer",
+      "severity": "P1",
+      "category": "correctness",
+      "title": "Exact threshold is rejected",
+      "location": {"file": "checkout/discount.go", "line_start": 4, "line_end": 4, "symbol": "Discount"},
+      "evidence": {
+        "code": "if total > 100",
+        "execution_path": "Discount(100) evaluates the condition as false and returns 0",
+        "violated_invariant": "Orders with total at least 100 receive a discount",
+        "requirement_source": "fixture acceptance rule: total >= 100",
+        "falsifier_checked": "Checked that no caller normalizes 100 upward before invoking Discount"
+      },
+      "impact": "A valid boundary-value order is charged too much.",
+      "recommendation": "Use the inclusive threshold required by the acceptance rule.",
+      "confidence": 0.99,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "code-reviewer-001",
+      "verdict": "accepted",
+      "final_severity": "P1",
+      "reason_code": "evidence-complete",
+      "reason": "The boundary path and violated requirement are directly demonstrated.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [{"id": "code-reviewer-001", "severity": "P1", "source_roles": ["code-reviewer"], "duplicate_ids": []}],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": false
+  }
+}

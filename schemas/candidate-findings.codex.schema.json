@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zephyr.local/schemas/v1/candidate-findings.codex.schema.json",
+  "title": "Zephyr candidate findings Codex output envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "run_id", "role", "findings"],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "run_id": { "$ref": "#/$defs/runID" },
+    "role": { "$ref": "#/$defs/roleName" },
+    "findings": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/finding" }
+    }
+  },
+  "$defs": {
+    "runID": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "\\S"
+    },
+    "roleName": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2", "P3"]
+    },
+    "codeLocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line_start", "line_end", "symbol"],
+      "properties": {
+        "file": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S" },
+        "line_start": { "type": "integer", "minimum": 1 },
+        "line_end": {
+          "anyOf": [
+            { "type": "integer", "minimum": 1 },
+            { "type": "null" }
+          ]
+        },
+        "symbol": {
+          "anyOf": [
+            { "type": "string", "maxLength": 512 },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "artifactLocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact", "section", "line_start", "line_end"],
+      "properties": {
+        "artifact": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S" },
+        "section": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "\\S" },
+        "line_start": {
+          "anyOf": [
+            { "type": "integer", "minimum": 1 },
+            { "type": "null" }
+          ]
+        },
+        "line_end": {
+          "anyOf": [
+            { "type": "integer", "minimum": 1 },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "execution_path", "violated_invariant", "requirement_source", "falsifier_checked"],
+      "properties": {
+        "code": {
+          "anyOf": [
+            { "type": "string", "minLength": 1, "maxLength": 16384, "pattern": "\\S" },
+            { "type": "null" }
+          ]
+        },
+        "execution_path": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" },
+        "violated_invariant": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" },
+        "requirement_source": {
+          "anyOf": [
+            { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S" },
+            { "type": "null" }
+          ]
+        },
+        "falsifier_checked": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "role",
+        "severity",
+        "category",
+        "title",
+        "location",
+        "evidence",
+        "impact",
+        "recommendation",
+        "confidence",
+        "needs_human"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S" },
+        "role": { "$ref": "#/$defs/roleName" },
+        "severity": { "$ref": "#/$defs/severity" },
+        "category": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "\\S" },
+        "location": {
+          "anyOf": [
+            { "$ref": "#/$defs/codeLocation" },
+            { "$ref": "#/$defs/artifactLocation" }
+          ]
+        },
+        "evidence": { "$ref": "#/$defs/evidence" },
+        "impact": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" },
+        "recommendation": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "needs_human": { "type": "boolean" }
+      }
+    }
+  }
+}

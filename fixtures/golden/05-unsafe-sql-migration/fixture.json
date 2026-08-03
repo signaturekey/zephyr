@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "id": "05-unsafe-sql-migration",
+  "plan_item": 5,
+  "title": "Unsafe SQL migration",
+  "description": "A NOT NULL column is added to a populated table without a default or backfill.",
+  "mode": "implementation",
+  "source": "working-tree",
+  "files": [
+    {
+      "path": "migrations/001_add_state.sql",
+      "content": "-- orders already contains rows\nALTER TABLE orders ADD COLUMN state TEXT NOT NULL;\n"
+    }
+  ],
+  "changed_files": ["migrations/001_add_state.sql"],
+  "plan": null,
+  "reviewer_roles": ["code-reviewer", "sql-expert"],
+  "candidates": [
+    {
+      "id": "sql-expert-001",
+      "role": "sql-expert",
+      "severity": "P1",
+      "category": "migration-safety",
+      "title": "Migration cannot populate the new NOT NULL column",
+      "location": {"file": "migrations/001_add_state.sql", "line_start": 2, "line_end": 2},
+      "evidence": {
+        "code": "ALTER TABLE orders ADD COLUMN state TEXT NOT NULL",
+        "execution_path": "The ALTER statement is applied while pre-existing rows have no value for state",
+        "violated_invariant": "Every existing row must satisfy the new NOT NULL constraint during migration",
+        "requirement_source": "fixture precondition: orders already contains rows",
+        "falsifier_checked": "No default, prior nullable phase, or backfill appears in the migration"
+      },
+      "impact": "Deployment migration fails and blocks the release.",
+      "recommendation": "Use an expand/backfill/validate sequence appropriate for the target database.",
+      "confidence": 0.98,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "sql-expert-001",
+      "verdict": "accepted",
+      "final_severity": "P1",
+      "reason_code": "migration-precondition-violated",
+      "reason": "The fixture establishes existing rows and the migration has no value-producing step.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [{"id": "sql-expert-001", "severity": "P1", "source_roles": ["sql-expert"], "duplicate_ids": []}],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": false
+  }
+}

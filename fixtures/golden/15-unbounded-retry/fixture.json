@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "id": "15-unbounded-retry",
+  "plan_item": 0,
+  "title": "Unbounded immediate retry",
+  "description": "A dependency call retries forever without delay or a terminal condition.",
+  "mode": "implementation",
+  "source": "working-tree",
+  "files": [
+    {
+      "path": "internal/resilience/retry.go",
+      "content": "package resilience\n\nfunc Call(send func() error) error {\n\tfor {\n\t\tif err := send(); err == nil {\n\t\t\treturn nil\n\t\t}\n\t}\n}\n"
+    }
+  ],
+  "changed_files": ["internal/resilience/retry.go"],
+  "plan": null,
+  "reviewer_roles": ["code-reviewer", "reliability-expert", "golang-expert"],
+  "candidates": [
+    {
+      "id": "reliability-expert-001",
+      "role": "reliability-expert",
+      "severity": "P1",
+      "category": "retry-policy",
+      "title": "Dependency failure causes an unbounded tight retry loop",
+      "location": {"file": "internal/resilience/retry.go", "line_start": 4, "line_end": 7, "symbol": "Call"},
+      "evidence": {
+        "code": "for { if err := send(); err == nil { return nil } }",
+        "execution_path": "A persistent dependency failure returns an error, immediately starts the next iteration, and has no exit path",
+        "violated_invariant": "Retries must have a bounded attempt or time budget and must not amplify a failed dependency without delay",
+        "requirement_source": null,
+        "falsifier_checked": "The complete function has no context, attempt limit, backoff, breaker, or error return path"
+      },
+      "impact": "A dependency outage can pin CPU, amplify request volume, and keep the caller stuck indefinitely.",
+      "recommendation": "Add a bounded retry budget, backoff, cancellation, and a terminal error path.",
+      "confidence": 0.99,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "reliability-expert-001",
+      "verdict": "accepted",
+      "final_severity": "P1",
+      "reason_code": "reachable-retry-amplification",
+      "reason": "The supplied loop demonstrates an immediate and unbounded retry path for every persistent error.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [{"id": "reliability-expert-001", "severity": "P1", "source_roles": ["reliability-expert"], "duplicate_ids": []}],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": false
+  }
+}

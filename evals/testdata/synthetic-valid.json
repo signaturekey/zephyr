@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "case_id": "synthetic-forward-eval",
+  "synthetic": true,
+  "baseline": {
+    "repository": "synthetic/example",
+    "pull_request_ref": "synthetic:42",
+    "merged_at": "2026-08-01T12:00:00Z",
+    "reviewed_sha": "1111111111111111111111111111111111111111",
+    "human_findings": [
+      {
+        "id": "human-001",
+        "severity": "P1",
+        "category": "correctness",
+        "summary": "Boundary input follows the wrong branch.",
+        "path": "handler.go",
+        "line": 12
+      },
+      {
+        "id": "human-002",
+        "severity": "P2",
+        "category": "test-coverage",
+        "summary": "The negative path is not tested.",
+        "path": "handler_test.go",
+        "line": 8
+      }
+    ]
+  },
+  "zephyr_run": {
+    "harness": "codex-app",
+    "mode": "implementation",
+    "executed_at": "2026-08-02T12:00:00Z",
+    "run_id": "synthetic-run",
+    "review_artifact": "synthetic/review.json",
+    "coverage_limits": [],
+    "findings": [
+      {
+        "id": "code-reviewer-001",
+        "severity": "P1",
+        "category": "correctness",
+        "title": "Boundary input follows the wrong branch",
+        "path": "handler.go",
+        "line": 12
+      },
+      {
+        "id": "qa-expert-001",
+        "severity": "P3",
+        "category": "test-coverage",
+        "title": "An additional edge case may be useful",
+        "path": "handler_test.go",
+        "line": 20
+      }
+    ]
+  },
+  "comparison": {
+    "matched": [
+      {
+        "human_id": "human-001",
+        "zephyr_ids": ["code-reviewer-001"],
+        "notes": "Same execution path and violated invariant."
+      }
+    ],
+    "missed_human_ids": ["human-002"],
+    "zephyr_only": [
+      {
+        "zephyr_id": "qa-expert-001",
+        "disposition": "false-positive",
+        "notes": "Synthetic adjudication: the proposed case does not exercise changed behavior."
+      }
+    ],
+    "notes": "Synthetic structure example only; not a Zephyr quality result."
+  }
+}

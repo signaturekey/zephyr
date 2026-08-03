@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "04-auth-idor-risk",
+  "plan_item": 4,
+  "title": "Authorization and IDOR risk",
+  "description": "A handler loads an object by user-controlled ID without checking ownership.",
+  "mode": "implementation",
+  "source": "working-tree",
+  "files": [
+    {
+      "path": "api/order.go",
+      "content": "package api\n\nimport \"context\"\n\ntype Store interface { Get(context.Context, string) (string, error) }\n\nfunc GetOrder(ctx context.Context, store Store, requestedID string) (string, error) {\n\treturn store.Get(ctx, requestedID)\n}\n"
+    }
+  ],
+  "changed_files": ["api/order.go"],
+  "plan": null,
+  "routing_signals": ["security"],
+  "reviewer_roles": ["code-reviewer", "security-auditor", "golang-expert"],
+  "candidates": [
+    {
+      "id": "security-auditor-001",
+      "role": "security-auditor",
+      "severity": "P0",
+      "category": "authorization",
+      "title": "Caller can fetch an arbitrary order by ID",
+      "location": {"file": "api/order.go", "line_start": 8, "line_end": 8, "symbol": "GetOrder"},
+      "evidence": {
+        "code": "return store.Get(ctx, requestedID)",
+        "execution_path": "The caller-controlled requestedID is sent directly to Store.Get and its result is returned",
+        "violated_invariant": "An authenticated caller may read only orders they are authorized to access",
+        "requirement_source": "fixture security boundary: orders are tenant-owned",
+        "falsifier_checked": "The function receives no principal or tenant and performs no authorization check"
+      },
+      "impact": "A remote caller can disclose another tenant's order data.",
+      "recommendation": "Bind the lookup to the authenticated principal and enforce object-level authorization before returning data.",
+      "confidence": 0.99,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "security-auditor-001",
+      "verdict": "accepted",
+      "final_severity": "P0",
+      "reason_code": "security-boundary-bypass",
+      "reason": "The complete request path lacks any identity-dependent authorization boundary.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [{"id": "security-auditor-001", "severity": "P0", "source_roles": ["security-auditor"], "duplicate_ids": []}],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": false
+  }
+}

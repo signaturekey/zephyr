@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "id": "16-commit-before-handle",
+  "plan_item": 0,
+  "title": "Consumer commits before processing",
+  "description": "A consumer acknowledges a message before the business handler succeeds.",
+  "mode": "implementation",
+  "source": "working-tree",
+  "files": [
+    {
+      "path": "internal/databus/consumer.go",
+      "content": "package databus\n\ntype Message struct{}\ntype Consumer interface { Commit(Message) error }\n\nfunc Consume(consumer Consumer, message Message, handle func(Message) error) error {\n\tif err := consumer.Commit(message); err != nil {\n\t\treturn err\n\t}\n\treturn handle(message)\n}\n"
+    }
+  ],
+  "changed_files": ["internal/databus/consumer.go"],
+  "plan": null,
+  "reviewer_roles": ["code-reviewer", "messaging-expert", "golang-expert"],
+  "candidates": [
+    {
+      "id": "messaging-expert-001",
+      "role": "messaging-expert",
+      "severity": "P1",
+      "category": "consumer-state",
+      "title": "Failed messages are acknowledged before their side effects complete",
+      "location": {"file": "internal/databus/consumer.go", "line_start": 7, "line_end": 10, "symbol": "Consume"},
+      "evidence": {
+        "code": "consumer.Commit(message); return handle(message)",
+        "execution_path": "Commit succeeds, handle then fails, and the broker-visible consumer state already marks the message complete",
+        "violated_invariant": "A message must not be acknowledged as complete before the required processing succeeds",
+        "requirement_source": null,
+        "falsifier_checked": "The supplied function has no transaction, compensating replay, negative acknowledgement, or later commit"
+      },
+      "impact": "A transient handler failure permanently loses the message's business effect.",
+      "recommendation": "Commit only after successful handling or use an atomic/replayable processing protocol.",
+      "confidence": 0.98,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "messaging-expert-001",
+      "verdict": "accepted",
+      "final_severity": "P1",
+      "reason_code": "acknowledged-before-processing",
+      "reason": "The execution order directly exposes a failure interval after acknowledgement and before successful handling.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [{"id": "messaging-expert-001", "severity": "P1", "source_roles": ["messaging-expert"], "duplicate_ids": []}],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": false
+  }
+}

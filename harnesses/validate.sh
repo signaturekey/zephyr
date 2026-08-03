@@ -1,0 +1,8 @@
+#!/bin/sh
+
+set -eu
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+sh "$script_dir/sync-discovery.sh" --check
+python3 "$script_dir/validate_harnesses.py"

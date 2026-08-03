@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "id": "07-missing-negative-test",
+  "plan_item": 7,
+  "title": "Missing negative test",
+  "description": "A test covers the success path but not the newly introduced denial path.",
+  "mode": "implementation",
+  "source": "working-tree",
+  "files": [
+    {
+      "path": "api/delete_test.go",
+      "content": "package api\n\nimport \"testing\"\n\nfunc TestDeleteOwnOrder(t *testing.T) {\n\tgot := deleteOrder(\"owner\", \"owner\")\n\tif !got { t.Fatal(\"expected deletion\") }\n}\n\nfunc deleteOrder(caller, owner string) bool { return caller == owner }\n"
+    }
+  ],
+  "changed_files": ["api/delete_test.go"],
+  "plan": null,
+  "routing_signals": ["tests"],
+  "reviewer_roles": ["code-reviewer", "golang-expert", "qa-expert"],
+  "candidates": [
+    {
+      "id": "qa-expert-001",
+      "role": "qa-expert",
+      "severity": "P2",
+      "category": "test-coverage",
+      "title": "Authorization denial path has no regression test",
+      "location": {"file": "api/delete_test.go", "line_start": 5, "line_end": 8, "symbol": "TestDeleteOwnOrder"},
+      "evidence": {
+        "code": "deleteOrder(\"owner\", \"owner\")",
+        "execution_path": "The only test invokes deleteOrder with caller equal to owner",
+        "violated_invariant": "The new authorization behavior must remain false when caller differs from owner",
+        "requirement_source": "deleteOrder authorization branch",
+        "falsifier_checked": "Searched the complete changed test file and found no caller-not-owner case"
+      },
+      "impact": "A regression that allows cross-owner deletion can pass the focused test suite.",
+      "recommendation": "Add a negative test with different caller and owner IDs.",
+      "confidence": 0.95,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "qa-expert-001",
+      "verdict": "accepted",
+      "final_severity": "P2",
+      "reason_code": "negative-path-uncovered",
+      "reason": "The changed behavior contains a security-relevant false branch with no test exercise.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [{"id": "qa-expert-001", "severity": "P2", "source_roles": ["qa-expert"], "duplicate_ids": []}],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": false
+  }
+}

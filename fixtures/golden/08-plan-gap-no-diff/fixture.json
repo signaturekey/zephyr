@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "id": "08-plan-gap-no-diff",
+  "plan_item": 8,
+  "title": "Plan gap without a diff",
+  "description": "A rollout plan changes stored data but omits rollback and recovery behavior.",
+  "mode": "plan",
+  "source": "plan-only",
+  "files": [],
+  "changed_files": [],
+  "plan": {
+    "path": "REVIEW_SPEC.md",
+    "content": "# State migration\n\n## Delivery\n\nWrite the new representation for every account in one deployment.\nEnable reads from the new representation immediately.\n"
+  },
+  "reviewer_roles": ["architect-reviewer"],
+  "candidates": [
+    {
+      "id": "architect-reviewer-001",
+      "role": "architect-reviewer",
+      "severity": "P2",
+      "category": "plan-completeness",
+      "title": "The migration has no rollback or recovery path",
+      "location": {"artifact": "REVIEW_SPEC.md", "section": "Missing rollback and recovery"},
+      "evidence": {
+        "code": null,
+        "execution_path": "Deployment writes the new representation and immediately switches reads to it",
+        "violated_invariant": "A state migration plan must define recovery when conversion or the new read path fails",
+        "requirement_source": "REVIEW_SPEC.md Delivery",
+        "falsifier_checked": "Read the complete snapshotted plan; no rollback, compatibility window, or recovery section exists"
+      },
+      "impact": "A failed rollout can leave accounts unreadable with no specified safe response.",
+      "recommendation": "Define compatibility, rollback trigger, and recovery procedure before implementation.",
+      "confidence": 0.97,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "architect-reviewer-001",
+      "verdict": "accepted",
+      "final_severity": "P2",
+      "reason_code": "required-plan-section-missing",
+      "reason": "The full plan establishes an irreversible transition but contains no recovery mechanism.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [{"id": "architect-reviewer-001", "severity": "P2", "source_roles": ["architect-reviewer"], "duplicate_ids": []}],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": false
+  }
+}
