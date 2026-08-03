@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "case_id": "synthetic-alignment-match",
+  "synthetic": true,
+  "baseline": {
+    "repository": "synthetic/catalog-service",
+    "pull_request_ref": "synthetic:103",
+    "merged_at": "2026-08-02T12:00:00Z",
+    "reviewed_sha": "4444444444444444444444444444444444444444",
+    "human_findings": [
+      {
+        "id": "human-publication-rule",
+        "severity": "P2",
+        "category": "specification-alignment",
+        "summary": "The catalog exposes inactive records despite the stated publication rule.",
+        "path": "internal/catalog/query.go",
+        "line": 73
+      }
+    ]
+  },
+  "zephyr_run": {
+    "harness": "codex-app",
+    "mode": "alignment",
+    "executed_at": "2026-08-02T11:30:00Z",
+    "run_id": "synthetic-alignment-match-run",
+    "review_artifact": "synthetic/alignment-match/review.json",
+    "coverage_limits": [],
+    "findings": [
+      {
+        "id": "contract-reviewer-publication-rule",
+        "severity": "P2",
+        "category": "specification-alignment",
+        "title": "Catalog query does not enforce the required active and published predicates",
+        "path": "internal/catalog/query.go",
+        "line": 73
+      }
+    ]
+  },
+  "comparison": {
+    "matched": [
+      {
+        "human_id": "human-publication-rule",
+        "zephyr_ids": ["contract-reviewer-publication-rule"],
+        "notes": "The reviewer and human review compare the same implementation against the same rule."
+      }
+    ],
+    "missed_human_ids": [],
+    "zephyr_only": [],
+    "notes": "Synthetic alignment-review scenario."
+  }
+}

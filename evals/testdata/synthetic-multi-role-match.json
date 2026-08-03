@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "case_id": "synthetic-multi-role-match",
+  "synthetic": true,
+  "baseline": {
+    "repository": "synthetic/frontend-service",
+    "pull_request_ref": "synthetic:104",
+    "merged_at": "2026-08-02T13:00:00Z",
+    "reviewed_sha": "5555555555555555555555555555555555555555",
+    "human_findings": [
+      {
+        "id": "human-stale-request",
+        "severity": "P1",
+        "category": "async-state",
+        "summary": "A stale request can overwrite the response for a newer selection.",
+        "path": "src/features/search/useSearch.ts",
+        "line": 61
+      }
+    ]
+  },
+  "zephyr_run": {
+    "harness": "claude-code",
+    "mode": "implementation",
+    "executed_at": "2026-08-02T12:30:00Z",
+    "run_id": "synthetic-multi-role-match-run",
+    "review_artifact": "synthetic/multi-role-match/review.json",
+    "coverage_limits": [],
+    "findings": [
+      {
+        "id": "frontend-expert-stale-request",
+        "severity": "P1",
+        "category": "async-state",
+        "title": "Older search response can replace newer state",
+        "path": "src/features/search/useSearch.ts",
+        "line": 61
+      },
+      {
+        "id": "code-reviewer-stale-request",
+        "severity": "P2",
+        "category": "correctness",
+        "title": "Request completion is not tied to the active selection",
+        "path": "src/features/search/useSearch.ts",
+        "line": 61
+      }
+    ]
+  },
+  "comparison": {
+    "matched": [
+      {
+        "human_id": "human-stale-request",
+        "zephyr_ids": ["frontend-expert-stale-request", "code-reviewer-stale-request"],
+        "notes": "Two independent roles describe the same user-visible race."
+      }
+    ],
+    "missed_human_ids": [],
+    "zephyr_only": [],
+    "notes": "Synthetic agreement scenario for multi-role findings."
+  }
+}

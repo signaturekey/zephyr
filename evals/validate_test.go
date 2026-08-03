@@ -31,7 +31,10 @@ func TestForwardEvaluationRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	paths := []string{filepath.Join("testdata", "synthetic-valid.json")}
+	paths, err := filepath.Glob(filepath.Join("testdata", "*.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	casePaths, err := filepath.Glob(filepath.Join("cases", "*.json"))
 	if err != nil {
 		t.Fatal(err)

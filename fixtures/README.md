@@ -1,6 +1,6 @@
 # Golden-сценарии Zephyr
 
-В `golden/` находятся двенадцать обязательных сценариев MVP из раздела 26.2
+В `golden/` находятся двенадцать обязательных сценариев MVP из раздела 16.2
 `AGENTS.md` и дополнительные сценарии TypeScript/frontend, `SKILL.md`,
 reliability, messaging, infrastructure и storage. В каждом
 каталоге лежит один самодостаточный

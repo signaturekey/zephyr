@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "case_id": "synthetic-perfect-match",
+  "synthetic": true,
+  "baseline": {
+    "repository": "synthetic/go-service",
+    "pull_request_ref": "synthetic:101",
+    "merged_at": "2026-08-02T10:00:00Z",
+    "reviewed_sha": "2222222222222222222222222222222222222222",
+    "human_findings": [
+      {
+        "id": "human-nil-response",
+        "severity": "P1",
+        "category": "correctness",
+        "summary": "The handler dereferences an optional response without checking it.",
+        "path": "internal/handler/get.go",
+        "line": 48
+      }
+    ]
+  },
+  "zephyr_run": {
+    "harness": "codex-app",
+    "mode": "implementation",
+    "executed_at": "2026-08-02T09:30:00Z",
+    "run_id": "synthetic-perfect-match-run",
+    "review_artifact": "synthetic/perfect-match/review.json",
+    "coverage_limits": [],
+    "findings": [
+      {
+        "id": "code-reviewer-nil-response",
+        "severity": "P1",
+        "category": "correctness",
+        "title": "Optional response is dereferenced before the error path is handled",
+        "path": "internal/handler/get.go",
+        "line": 48
+      }
+    ]
+  },
+  "comparison": {
+    "matched": [
+      {
+        "human_id": "human-nil-response",
+        "zephyr_ids": ["code-reviewer-nil-response"],
+        "notes": "Both findings identify the same dereference and failure path."
+      }
+    ],
+    "missed_human_ids": [],
+    "zephyr_only": [],
+    "notes": "Synthetic complete-match scenario."
+  }
+}

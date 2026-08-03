@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "case_id": "synthetic-coverage-limit",
+  "synthetic": true,
+  "baseline": {
+    "repository": "synthetic/sql-service",
+    "pull_request_ref": "synthetic:102",
+    "merged_at": "2026-08-02T11:00:00Z",
+    "reviewed_sha": "3333333333333333333333333333333333333333",
+    "human_findings": [
+      {
+        "id": "human-non-idempotent-migration",
+        "severity": "P1",
+        "category": "database-migration",
+        "summary": "The migration cannot be safely retried after a partial deploy.",
+        "path": "migrations/20260802_add_index.sql",
+        "line": 6
+      }
+    ]
+  },
+  "zephyr_run": {
+    "harness": "claude-code",
+    "mode": "implementation",
+    "executed_at": "2026-08-02T10:30:00Z",
+    "run_id": "synthetic-coverage-limit-run",
+    "review_artifact": "synthetic/coverage-limit/review.json",
+    "coverage_limits": ["sql-expert was excluded because the configured role limit was reached"],
+    "findings": []
+  },
+  "comparison": {
+    "matched": [],
+    "missed_human_ids": ["human-non-idempotent-migration"],
+    "zephyr_only": [],
+    "notes": "Synthetic blind-spot scenario: the miss is attributed to an explicit coverage limit."
+  }
+}
