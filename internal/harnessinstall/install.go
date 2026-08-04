@@ -47,6 +47,14 @@ type asset struct {
 	mode        fs.FileMode
 }
 
+type installedManifest struct {
+	path         string
+	skillRoot    string
+	sourcePrefix string
+	hashes       map[string][]byte
+	verified     bool
+}
+
 func OptionsFromEnvironment(surface Surface) (Options, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -74,8 +82,12 @@ func Install(options Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	manifests, err := installedManifests(assets)
+	if err != nil {
+		return Result{}, err
+	}
 	for _, item := range assets {
-		if err := preflight(item); err != nil {
+		if err := uninstallPreflight(item, manifests); err != nil {
 			return Result{}, err
 		}
 	}
@@ -94,6 +106,135 @@ func Install(options Options) (Result, error) {
 		Files:   installed,
 		Message: "Начните новую сессию harness, чтобы загрузились установленный skill и agents.",
 	}, nil
+}
+
+func installedManifests(assets []asset) ([]installedManifest, error) {
+	var manifests []installedManifest
+	for _, item := range assets {
+		if item.source != "harnesses/assets.sha256" {
+			continue
+		}
+		skillRoot := filepath.Dir(filepath.Dir(item.destination))
+		anchorDestination := filepath.Join(skillRoot, "SKILL.md")
+		anchorSource := ""
+		for _, candidate := range assets {
+			if candidate.destination == anchorDestination {
+				anchorSource = candidate.source
+				break
+			}
+		}
+		if anchorSource == "" {
+			return nil, fmt.Errorf("find installed manifest anchor for %s", item.destination)
+		}
+		manifest := installedManifest{
+			path:         item.destination,
+			skillRoot:    skillRoot,
+			sourcePrefix: filepath.Dir(anchorSource),
+		}
+		info, err := os.Lstat(manifest.path)
+		if errors.Is(err, os.ErrNotExist) {
+			manifests = append(manifests, manifest)
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("inspect installed manifest %s: %w", manifest.path, err)
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("refusing uninstall with non-regular manifest: %s", manifest.path)
+		}
+		content, err := os.ReadFile(manifest.path)
+		if err != nil {
+			return nil, fmt.Errorf("read installed manifest %s: %w", manifest.path, err)
+		}
+		hashes, err := parseManifest(content)
+		if err != nil {
+			return nil, fmt.Errorf("parse installed manifest %s: %w", manifest.path, err)
+		}
+		manifest.hashes = hashes
+		anchor, err := os.ReadFile(anchorDestination)
+		if err == nil {
+			if expected, ok := hashes[anchorSource]; ok {
+				actual := sha256.Sum256(anchor)
+				manifest.verified = bytes.Equal(expected, actual[:])
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("read installed manifest anchor %s: %w", anchorDestination, err)
+		}
+		manifests = append(manifests, manifest)
+	}
+	return manifests, nil
+}
+
+func parseManifest(content []byte) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+	scanner := bufio.NewScanner(bytes.NewReader(content))
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) != 2 {
+			return nil, fmt.Errorf("invalid manifest line %q", scanner.Text())
+		}
+		hash, err := hex.DecodeString(fields[0])
+		if err != nil || len(hash) != sha256.Size {
+			return nil, fmt.Errorf("invalid manifest hash for %s", fields[1])
+		}
+		if _, exists := result[fields[1]]; exists {
+			return nil, fmt.Errorf("duplicate manifest asset %s", fields[1])
+		}
+		result[fields[1]] = hash
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func uninstallPreflight(item asset, manifests []installedManifest) error {
+	if err := rejectSymlinkComponents(filepath.Dir(item.destination)); err != nil {
+		return err
+	}
+	info, err := os.Lstat(item.destination)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect uninstall target %s: %w", item.destination, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("refusing to remove non-regular file: %s", item.destination)
+	}
+	manifest := manifestForAsset(item, manifests)
+	if manifest != nil && manifest.verified {
+		if item.destination == manifest.path {
+			return nil
+		}
+		expected, ok := manifest.hashes[item.source]
+		if !ok {
+			return fmt.Errorf("refusing to remove asset absent from installed manifest: %s", item.destination)
+		}
+		content, err := os.ReadFile(item.destination)
+		if err != nil {
+			return fmt.Errorf("read uninstall target %s: %w", item.destination, err)
+		}
+		actual := sha256.Sum256(content)
+		if !bytes.Equal(expected, actual[:]) {
+			return fmt.Errorf("refusing to remove modified or foreign file: %s", item.destination)
+		}
+		return nil
+	}
+	return preflight(item)
+}
+
+func manifestForAsset(item asset, manifests []installedManifest) *installedManifest {
+	for index := range manifests {
+		manifest := &manifests[index]
+		if item.destination == manifest.path || strings.HasPrefix(item.destination, manifest.skillRoot+string(filepath.Separator)) {
+			return manifest
+		}
+		if strings.HasPrefix(item.source, manifest.sourcePrefix+"/") {
+			return manifest
+		}
+	}
+	return nil
 }
 
 func Uninstall(options Options) (Result, error) {

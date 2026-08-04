@@ -87,6 +87,39 @@ func TestUninstallOpenCode(t *testing.T) {
 	}
 }
 
+func TestUninstallAcceptsHistoricalInstalledManifest(t *testing.T) {
+	root := resolvedTempDir(t)
+	options := Options{
+		Surface:        SurfaceCodex,
+		CodexSkillsDir: filepath.Join(root, "codex-skills"),
+		CodexAgentsDir: filepath.Join(root, "codex-agents"),
+	}
+	if _, err := Install(options); err != nil {
+		t.Fatal(err)
+	}
+	manifest := filepath.Join(root, "codex-skills", "zephyr", "references", "assets.sha256")
+	content, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(content), "\n")
+	for index, line := range lines {
+		if strings.HasSuffix(line, "  harnesses/assets.sha256") {
+			lines[index] = strings.Repeat("0", 64) + "  harnesses/assets.sha256"
+			break
+		}
+	}
+	if err := os.WriteFile(manifest, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Uninstall(options); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "codex-skills", "zephyr", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("historical skill was not removed: %v", err)
+	}
+}
+
 func TestOpenCodeAgentDefinition(t *testing.T) {
 	root := resolvedTempDir(t)
 	options := Options{

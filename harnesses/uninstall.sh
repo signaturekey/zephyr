@@ -6,7 +6,7 @@ usage() {
   cat >&2 <<'EOF'
 usage: sh harnesses/uninstall.sh --codex|--claude|--opencode|--all
 
-Removes only files that are byte-identical to this checkout's Zephyr harness
+Removes only files verified by the manifest installed with the Zephyr harness
 package. Modified or unrelated files make the uninstall fail before deletion.
 EOF
 }
@@ -142,11 +142,76 @@ check_removal() {
     exit 1
   fi
   if [ -e "$removal_destination" ]; then
-    if [ ! -f "$removal_destination" ] || ! cmp -s "$removal_source" "$removal_destination"; then
+    if [ ! -f "$removal_destination" ]; then
       echo "refusing to remove modified or foreign file: $removal_destination" >&2
       echo "remove it manually after reviewing its contents" >&2
       exit 1
     fi
+    if [ "$removal_destination" = "$installed_manifest" ]; then
+      if [ "$installed_manifest_verified" != yes ]; then
+        echo "refusing to remove an unverified manifest: $removal_destination" >&2
+        exit 1
+      fi
+      return
+    fi
+    if [ "$installed_manifest_verified" = yes ]; then
+      source_asset=${removal_source#"$repo_root"/}
+      expected_hash=$(manifest_hash "$installed_manifest" "$source_asset")
+      if [ -z "$expected_hash" ] || [ "$(hash_file "$removal_destination")" != "$expected_hash" ]; then
+        echo "refusing to remove modified or foreign file: $removal_destination" >&2
+        echo "remove it manually after reviewing its contents" >&2
+        exit 1
+      fi
+      return
+    fi
+    if ! cmp -s "$removal_source" "$removal_destination"; then
+      echo "refusing to remove modified or foreign file: $removal_destination" >&2
+      echo "remove it manually after reviewing its contents" >&2
+      exit 1
+    fi
+  fi
+}
+
+hash_file() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+    return
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+    return
+  fi
+  echo "cannot verify installed manifest: shasum or sha256sum is required" >&2
+  exit 1
+}
+
+manifest_hash() {
+  manifest_file=$1
+  manifest_asset=$2
+  awk -v asset="$manifest_asset" '$2 == asset { count++; value = $1 } END { if (count == 1) print value }' "$manifest_file"
+}
+
+prepare_installed_manifest() {
+  installed_skill_root=$1
+  anchor_source=$2
+  anchor_destination=$3
+  installed_manifest="$installed_skill_root/references/assets.sha256"
+  installed_manifest_verified=no
+
+  if [ -L "$installed_manifest" ]; then
+    echo "refusing to remove symlinked manifest: $installed_manifest" >&2
+    exit 1
+  fi
+  if [ ! -f "$installed_manifest" ]; then
+    return
+  fi
+  if [ -L "$anchor_destination" ] || [ ! -f "$anchor_destination" ]; then
+    return
+  fi
+  anchor_asset=${anchor_source#"$repo_root"/}
+  anchor_hash=$(manifest_hash "$installed_manifest" "$anchor_asset")
+  if [ -n "$anchor_hash" ] && [ "$(hash_file "$anchor_destination")" = "$anchor_hash" ]; then
+    installed_manifest_verified=yes
   fi
 }
 
@@ -172,6 +237,7 @@ if [ "$uninstall_codex" = yes ]; then
   require_absolute "$codex_skills_dir"
   require_absolute "$codex_agents_dir"
   codex_skill_root="$codex_skills_dir/zephyr"
+  prepare_installed_manifest "$codex_skill_root" "$repo_root/harnesses/codex/SKILL.md" "$codex_skill_root/SKILL.md"
 
   check_removal "$repo_root/harnesses/codex/SKILL.md" "$codex_skill_root/SKILL.md"
   check_removal "$repo_root/harnesses/codex/dispatch.sh" "$codex_skill_root/scripts/dispatch.sh"
@@ -193,6 +259,7 @@ if [ "$uninstall_claude" = yes ]; then
   require_absolute "$claude_skills_dir"
   require_absolute "$claude_agents_dir"
   claude_skill_root="$claude_skills_dir/zephyr"
+  prepare_installed_manifest "$claude_skill_root" "$repo_root/harnesses/claude-code/SKILL.md" "$claude_skill_root/SKILL.md"
 
   check_removal "$repo_root/harnesses/claude-code/SKILL.md" "$claude_skill_root/SKILL.md"
   check_removal "$repo_root/harnesses/assets.sha256" "$claude_skill_root/references/assets.sha256"
@@ -212,6 +279,7 @@ if [ "$uninstall_opencode" = yes ]; then
   require_absolute "$opencode_skills_dir"
   require_absolute "$opencode_agents_dir"
   opencode_skill_root="$opencode_skills_dir/zephyr"
+  prepare_installed_manifest "$opencode_skill_root" "$repo_root/harnesses/opencode/SKILL.md" "$opencode_skill_root/SKILL.md"
 
   check_removal "$repo_root/harnesses/opencode/SKILL.md" "$opencode_skill_root/SKILL.md"
   check_removal "$repo_root/harnesses/opencode/dispatch.sh" "$opencode_skill_root/scripts/dispatch.sh"
