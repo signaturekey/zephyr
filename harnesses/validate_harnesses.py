@@ -355,11 +355,14 @@ def validate_claude_agents() -> None:
 
 
 def validate_installers() -> None:
-    scripts = (
+    harness_scripts = (
         ROOT / "harnesses/install.sh",
         ROOT / "harnesses/uninstall.sh",
         ROOT / "harnesses/update.sh",
     )
+    cli_uninstaller = ROOT / "harnesses/uninstall-cli.sh"
+    bootstrap = ROOT / "harnesses/bootstrap.sh"
+    scripts = (*harness_scripts, cli_uninstaller, bootstrap)
     for path in scripts:
         result = subprocess.run(
             ["sh", "-n", str(path)],
@@ -370,6 +373,11 @@ def validate_installers() -> None:
         if result.returncode != 0:
             fail(f"{path}: shell syntax check failed: {result.stderr.strip()}")
 
+        text = path.read_text(encoding="utf-8")
+        if path != bootstrap and ("rm -rf" in text or "rm -r" in text):
+            fail(f"{path}: recursive removal is forbidden")
+
+    for path in harness_scripts:
         text = path.read_text(encoding="utf-8")
         for phrase in (
             "--codex",
@@ -385,25 +393,38 @@ def validate_installers() -> None:
         ):
             if phrase not in text:
                 fail(f"{path}: missing installer safety element {phrase!r}")
-        if "rm -rf" in text or "rm -r" in text:
-            fail(f"{path}: recursive removal is forbidden")
 
         if path.name != "update.sh":
             for phrase in ('"$repo_root"/roles/*.md', '"$repo_root"/schemas/*.json'):
                 if phrase not in text:
                     fail(f"{path}: missing installer package element {phrase!r}")
 
-    install_text = scripts[0].read_text(encoding="utf-8")
+    install_text = harness_scripts[0].read_text(encoding="utf-8")
     if "refusing to overwrite different file" not in install_text:
         fail("installer must fail closed on file collisions")
     if 'ln "$install_temp" "$install_destination"' not in install_text:
         fail("installer must publish files without overwriting an existing destination")
 
-    uninstall_text = scripts[1].read_text(encoding="utf-8")
+    uninstall_text = harness_scripts[1].read_text(encoding="utf-8")
     if "refusing to remove modified or foreign file" not in uninstall_text:
         fail("uninstaller must preserve modified or foreign files")
 
-    update_text = scripts[2].read_text(encoding="utf-8")
+    uninstall_cli_text = cli_uninstaller.read_text(encoding="utf-8")
+    if "refusing to remove a CLI that is not built from" not in uninstall_cli_text:
+        fail("CLI uninstaller must preserve foreign binaries")
+
+    bootstrap_text = bootstrap.read_text(encoding="utf-8")
+    for phrase in (
+        "ZEPHYR_REPOSITORY_URL",
+        "ZEPHYR_REF",
+        "mktemp -d",
+        '"install-$surface"',
+        '"$temporary_parent"/zephyr-bootstrap.*',
+    ):
+        if phrase not in bootstrap_text:
+            fail(f"bootstrap is missing installation element {phrase!r}")
+
+    update_text = harness_scripts[2].read_text(encoding="utf-8")
     for phrase in (
         "refusing to update modified or foreign file",
         "ZEPHYR_BACKUP_DIR",
@@ -453,6 +474,13 @@ def validate_installers() -> None:
         "sh harnesses/update.sh --codex",
         "sh harnesses/update.sh --all",
         "sh harnesses/uninstall.sh --all",
+        "make uninstall-skill",
+        "make uninstall-cli",
+        "make install-codex",
+        "make install-claude",
+        "make install-all",
+        "zephyr harness install codex",
+        "rest/api/1.0/projects/~ydkozhemyakin/repos/zephyr/raw/harnesses/bootstrap.sh",
     ):
         if phrase not in readme:
             fail(f"README is missing harness installation instruction {phrase!r}")
@@ -463,6 +491,13 @@ def validate_installers() -> None:
         "update-codex:",
         "update-claude:",
         "update-all:",
+        "uninstall:",
+        "uninstall-skill:",
+        "uninstall-cli:",
+        "install-cli:",
+        "install-codex:",
+        "install-claude:",
+        "install-all:",
         "$(MAKE) install",
         "sh harnesses/update.sh --codex",
         "sh harnesses/update.sh --claude",

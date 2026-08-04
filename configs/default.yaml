@@ -7,7 +7,7 @@ limits:
   max_parallel_reviewers: 4
   max_roles_standard: 15
   max_roles_thorough: 15
-  max_final_findings: 8
+  max_final_findings: 10
 
 roles:
   code-reviewer:
@@ -61,10 +61,28 @@ routing:
       paths: ["**/kafka/**", "**/messaging/**", "**/queues/**", "**/databus/**"]
     add_roles: ["messaging-expert"]
   - when:
-      paths: ["**/Dockerfile", "**/Dockerfile.*", "**/k8s/**", "**/kubernetes/**", "**/helm/**", "**/charts/**", ".github/workflows/**", ".gitlab-ci.yml", "**/teamcity/**"]
+      paths:
+        [
+          "**/Dockerfile",
+          "**/Dockerfile.*",
+          "**/k8s/**",
+          "**/kubernetes/**",
+          "**/helm/**",
+          "**/charts/**",
+          ".github/workflows/**",
+          ".gitlab-ci.yml",
+          "**/teamcity/**",
+        ]
     add_roles: ["infrastructure-expert"]
   - when:
-      paths: ["**/redis/**", "**/cache/**", "**/elasticsearch/**", "**/opensearch/**", "**/search/**"]
+      paths:
+        [
+          "**/redis/**",
+          "**/cache/**",
+          "**/elasticsearch/**",
+          "**/opensearch/**",
+          "**/search/**",
+        ]
     add_roles: ["storage-expert"]
   - when:
       paths: ["migrations/**", "**/*.sql"]

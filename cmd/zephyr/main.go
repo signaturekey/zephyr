@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/alecthomas/kong"
+	"github.com/signaturekey/zephyr/internal/harnessinstall"
 	"github.com/signaturekey/zephyr/internal/run"
 	"github.com/signaturekey/zephyr/internal/workflow"
 )
@@ -30,6 +31,7 @@ type CLI struct {
 	Aggregate          AggregateCmd          `cmd:"" help:"Apply verdicts, deduplicate findings, and create review.json."`
 	Render             RenderCmd             `cmd:"" help:"Render review.md from validated review.json."`
 	Inspect            InspectCmd            `cmd:"" help:"Show run state, counts, limits, and artifact paths."`
+	Harness            HarnessCmd            `cmd:"" help:"Install embedded Zephyr skills and agents into a local harness."`
 	Version            VersionCmd            `cmd:"" help:"Print the Zephyr build version."`
 }
 
@@ -38,6 +40,26 @@ type runtime struct {
 	service *workflow.Service
 	stdin   io.Reader
 	stdout  io.Writer
+}
+
+type HarnessCmd struct {
+	Install HarnessInstallCmd `cmd:"" help:"Install embedded Zephyr assets into Codex, Claude Code, or both."`
+}
+
+type HarnessInstallCmd struct {
+	Surface string `arg:"" required:"" enum:"codex,claude,all" help:"Harness surface: codex, claude, or all."`
+}
+
+func (command *HarnessInstallCmd) Run(app *runtime) error {
+	options, err := harnessinstall.OptionsFromEnvironment(harnessinstall.Surface(command.Surface))
+	if err != nil {
+		return err
+	}
+	result, err := harnessinstall.Install(options)
+	if err != nil {
+		return err
+	}
+	return emit(app.stdout, result)
 }
 
 func main() {
