@@ -40,6 +40,7 @@ Use a code location (`file`, `line_start`, optional `line_end`/`symbol`) for cod
 
 - Read the supplied candidate schema before answering and conform to it exactly.
 - Return JSON only: no prose, Markdown fence, comments, or trailing text.
+- Write every human-readable JSON value in Russian: `title`, `impact`, `recommendation`, every `evidence` text field, and artifact `section`. Keep JSON keys, role IDs, categories, severity values, file paths, symbols, code fragments, URLs, hashes, and enum values unchanged.
 - Emit one v1 artifact object with the packet's `run_id`, the exact role key, and a `findings` array: `{"version":1,"run_id":"...","role":"<role>","findings":[]}`. The schema remains authoritative for every nested field.
 - Use the exact role key from the role prompt and stable IDs in the form `<role>-001`, `<role>-002`, ordered by severity then location.
 - Use only schema-defined fields and enum values. Emit the schema-defined empty result when there are no supported candidates.

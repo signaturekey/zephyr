@@ -86,7 +86,7 @@ func TestRenderMarkdownLimitsNoiseAndShowsHonestEmptyResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "Доказуемых проблем в проверенном scope не найдено") || strings.Contains(string(data), "полностью корректен") {
+	if !strings.Contains(string(data), "Доказуемых проблем в проверенной области не найдено") || strings.Contains(string(data), "полностью корректен") {
 		t.Fatalf("unexpected empty report:\n%s", data)
 	}
 }

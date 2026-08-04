@@ -293,7 +293,7 @@ func runGolden(t *testing.T, fixture goldenFixture) {
 	if !bytes.Equal(markdown, markdownAgain) {
 		t.Fatal("Markdown rendering is not deterministic")
 	}
-	containsHonestEmpty := strings.Contains(string(markdown), "Доказуемых проблем в проверенном scope не найдено")
+	containsHonestEmpty := strings.Contains(string(markdown), "Доказуемых проблем в проверенной области не найдено")
 	if containsHonestEmpty != fixture.Expected.HonestEmpty {
 		t.Fatalf("honest empty-result message present=%v, want %v", containsHonestEmpty, fixture.Expected.HonestEmpty)
 	}

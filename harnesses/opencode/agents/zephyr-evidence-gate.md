@@ -51,4 +51,4 @@ Apply these severity meanings:
 - Return JSON only, with no Markdown fence or surrounding prose.
 - Emit one v1 artifact object with the packet's `run_id` and a `verdicts` array: `{"version":1,"run_id":"...","verdicts":[]}`. The schema remains authoritative for every verdict field.
 - Use only input candidate IDs, schema-defined fields, and enum values. When the schema does not constrain `reason_code`, use one stable code from: `evidence-complete`, `evidence-incomplete`, `out-of-scope`, `packet-contradicts-claim`, `severity-overstated`, `same-root-cause`, or `human-decision-required`.
-- Give concise, inspectable reasons. Do not expose chain-of-thought.
+- Write every human-readable `reason` in Russian. Keep JSON keys, candidate IDs, `reason_code`, severity values, and verdict enum values unchanged. Give concise, inspectable reasons. Do not expose chain-of-thought.

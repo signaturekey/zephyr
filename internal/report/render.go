@@ -144,7 +144,7 @@ func lineLocation(path string, start, end int) string {
 
 func reasonSummary(decision RoleDecision) string {
 	if len(decision.Reasons) == 0 {
-		return "no recorded reason"
+		return "причина не зафиксирована"
 	}
 	return strings.Join(decision.Reasons, "; ")
 }
@@ -172,71 +172,71 @@ func cleanCodeSpan(value string) string {
 	return value
 }
 
-const markdownTemplate = `# Zephyr review
+const markdownTemplate = `# Ревью Zephyr
 
-## Scope
+## Область проверки
 
-- Status: {{clean .Review.Status}}
-- Mode: {{clean .Review.Scope.Mode}}
-- Source: {{clean .Review.Scope.Source}}
-- Repository: {{clean .Review.Scope.Repository}}
+- Статус: {{clean .Review.Status}}
+- Режим: {{clean .Review.Scope.Mode}}
+- Источник: {{clean .Review.Scope.Source}}
+- Репозиторий: {{clean .Review.Scope.Repository}}
 {{- if .Review.Scope.Branch}}
-- Branch: {{clean .Review.Scope.Branch}}
+- Ветка: {{clean .Review.Scope.Branch}}
 {{- end}}
 {{- if .Review.Scope.Head}}
-- Checkout HEAD: {{clean .Review.Scope.Head}}
+- HEAD checkout: {{clean .Review.Scope.Head}}
 {{- end}}
 {{- if .Review.Scope.BaseRef}}
-- Base ref: {{clean .Review.Scope.BaseRef}}
+- Базовая ссылка: {{clean .Review.Scope.BaseRef}}
 {{- end}}
 {{- if .Review.Scope.BaseSHA}}
-- Base SHA: {{clean .Review.Scope.BaseSHA}}
+- Базовый SHA: {{clean .Review.Scope.BaseSHA}}
 {{- end}}
 {{- if .Review.Scope.TargetSHA}}
-- Reviewed target SHA: {{clean .Review.Scope.TargetSHA}}
+- Проверенный SHA: {{clean .Review.Scope.TargetSHA}}
 {{- end}}
 {{- if .Review.Scope.CommitRange}}
-- Commit range: {{clean .Review.Scope.CommitRange}}
+- Диапазон коммитов: {{clean .Review.Scope.CommitRange}}
 {{- end}}
 {{- if .Review.Scope.Plan}}
-- Plan: {{clean .Review.Scope.Plan}}
+- План: {{clean .Review.Scope.Plan}}
 {{- end}}
 {{- if .Review.Scope.PlanHash}}
-- Plan hash: {{clean .Review.Scope.PlanHash}}
+- Хеш плана: {{clean .Review.Scope.PlanHash}}
 {{- end}}
 {{- if .Review.Scope.Stale}}
-- Snapshot: stale; this report still refers to the original SHA and working-tree fingerprint
+- Снимок устарел: отчёт относится к исходному SHA и отпечатку рабочего дерева
 {{- end}}
 
-## Provenance
+## Источники контекста
 {{- range .Review.Scope.Sources}}
 
 - {{clean .Source}}{{if .Key}} — {{clean .Key}}{{end}}{{if .URL}} — {{clean .URL}}{{end}} — {{clean .ContentHash}}{{if hasTimestamp .FetchedAt}} — {{timestamp .FetchedAt}}{{end}}
 {{- else}}
 
-- none recorded
+- не зафиксированы
 {{- end}}
 
-## Routing
+## Маршрутизация
 
-Selected roles:
+Выбранные роли:
 {{- range .Review.Routing.Selected}}
 - ` + "`{{code .Role}}`" + ` — {{clean (reasonSummary .)}}
 {{- else}}
-- none
+- нет
 {{- end}}
 
-Excluded roles:
+Исключённые роли:
 {{- range .Review.Routing.Excluded}}
 - ` + "`{{code .Role}}`" + ` — {{clean (reasonSummary .)}}
 {{- else}}
-- none
+- нет
 {{- end}}
 
-## Findings
+## Подтверждённые замечания
 {{- if eq .FindingCount 0}}
 
-Доказуемых проблем в проверенном scope не найдено.
+Доказуемых проблем в проверенной области не найдено.
 {{- end}}
 {{- range .Sections}}
 {{- if .Items}}
@@ -246,43 +246,43 @@ Excluded roles:
 
 #### [{{.Candidate.Severity}}] {{clean .Candidate.Title}}
 
-- Location: ` + "`{{location .}}`" + `
-- Roles: {{clean (join .SourceRoles)}}
-- Impact: {{clean .Candidate.Impact}}
-- Evidence: {{clean .Candidate.Evidence.ExecutionPath}}; {{clean .Candidate.Evidence.ViolatedInvariant}}
-- Counterevidence checked: {{clean .Candidate.Evidence.FalsifierChecked}}
-- Recommendation: {{clean .Candidate.Recommendation}}
-- Gate: {{clean .GateReason}}
+- Место: ` + "`{{location .}}`" + `
+- Роли: {{clean (join .SourceRoles)}}
+- Влияние: {{clean .Candidate.Impact}}
+- Доказательства: {{clean .Candidate.Evidence.ExecutionPath}}; {{clean .Candidate.Evidence.ViolatedInvariant}}
+- Проверенный контрпример: {{clean .Candidate.Evidence.FalsifierChecked}}
+- Рекомендация: {{clean .Candidate.Recommendation}}
+- Вердикт gate: {{clean .GateReason}}
 {{- end}}
 {{- end}}
 {{- end}}
 {{- if or (index .Omitted "P1") (index .Omitted "P2") (index .Omitted "P3")}}
 
-Additional confirmed findings omitted from the Markdown view: P1={{index .Omitted "P1"}}, P2={{index .Omitted "P2"}}, P3={{index .Omitted "P3"}}. See ` + "`review.json`" + `.
+Дополнительные подтверждённые замечания скрыты из краткого Markdown-отчёта: P1={{index .Omitted "P1"}}, P2={{index .Omitted "P2"}}, P3={{index .Omitted "P3"}}. Полный список — в ` + "`review.json`" + `.
 {{- end}}
 
-## Needs human
+## Требуется решение человека
 {{- range .Review.NeedsHuman}}
 
 - **{{clean .Candidate.Title}}** (` + "`{{candidateLocation .Candidate}}`" + `): {{clean .Reason}}
 {{- else}}
 
-- none
+- нет
 {{- end}}
 
-## Coverage limits
+## Ограничения покрытия
 {{- range .Review.CoverageLimits}}
 
 - {{clean .}}
 {{- else}}
 
-- none recorded
+- не зафиксированы
 {{- end}}
 
-## Rejected candidates
+## Отклонённые кандидаты
 
-- Count: {{.Review.Rejected.Count}}
-- Full artifact: ` + "`{{code .Review.Rejected.Path}}`" + `
+- Количество: {{.Review.Rejected.Count}}
+- Полный артефакт: ` + "`{{code .Review.Rejected.Path}}`" + `
 {{- range $reason, $count := .Review.Rejected.ByReason}}
 - ` + "`{{code $reason}}`" + `: {{$count}}
 {{- end}}
