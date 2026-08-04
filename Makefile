@@ -82,7 +82,6 @@ update-all:
 	$(MAKE) install
 	sh harnesses/update.sh --all
 
-
 fmt:
 	$(GOFMT) -w $(GO_FILES)
 
