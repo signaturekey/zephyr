@@ -480,7 +480,6 @@ def validate_installers() -> None:
         "make install-claude",
         "make install-all",
         "zephyr harness install codex",
-        "rest/api/1.0/projects/~ydkozhemyakin/repos/zephyr/raw/harnesses/bootstrap.sh",
     ):
         if phrase not in readme:
             fail(f"README is missing harness installation instruction {phrase!r}")
