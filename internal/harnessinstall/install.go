@@ -87,7 +87,7 @@ func Install(options Options) (Result, error) {
 	return Result{
 		Surface: options.Surface,
 		Files:   installed,
-		Message: "Start a new harness session so it loads the installed skill and agents.",
+		Message: "Начните новую сессию harness, чтобы загрузились установленный skill и agents.",
 	}, nil
 }
 

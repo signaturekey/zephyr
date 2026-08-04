@@ -31,7 +31,7 @@ if [ -L "$install_binary" ]; then
   exit 1
 fi
 if [ ! -e "$install_binary" ]; then
-  echo "Zephyr CLI is not installed: $install_binary"
+  echo "Zephyr CLI не установлен: $install_binary"
   exit 0
 fi
 if [ ! -f "$install_binary" ]; then
@@ -46,4 +46,4 @@ if ! "$go_command" version -m "$install_binary" | grep -F "$expected_path" >/dev
 fi
 
 rm "$install_binary"
-echo "Removed Zephyr CLI: $install_binary"
+echo "Zephyr CLI удалён: $install_binary"

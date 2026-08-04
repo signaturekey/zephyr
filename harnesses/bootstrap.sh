@@ -60,5 +60,5 @@ trap cleanup EXIT HUP INT TERM
 git clone --quiet --depth 1 --branch "$repository_ref" "$repository_url" "$bootstrap_root/repository"
 make -C "$bootstrap_root/repository" "install-$surface"
 
-echo "Installed Zephyr CLI and $surface harness package."
-echo "Start a new harness session so it loads the installed skill and agents."
+echo "Установлены Zephyr CLI и пакет harness $surface."
+echo "Начните новую сессию harness, чтобы загрузились установленный skill и agents."

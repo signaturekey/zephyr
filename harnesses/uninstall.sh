@@ -220,7 +220,7 @@ if [ "$uninstall_codex" = yes ]; then
   remove_empty_dir "$codex_skill_root/agents"
   remove_empty_dir "$codex_skill_root/scripts"
   remove_empty_dir "$codex_skill_root"
-  echo "Removed the matching Zephyr Codex files."
+  echo "Удалены соответствующие файлы Zephyr для Codex."
 fi
 
 if [ "$uninstall_claude" = yes ]; then
@@ -241,7 +241,7 @@ if [ "$uninstall_claude" = yes ]; then
   remove_empty_dir "$claude_skill_root/references/agents"
   remove_empty_dir "$claude_skill_root/references"
   remove_empty_dir "$claude_skill_root"
-  echo "Removed the matching Zephyr Claude Code files."
+  echo "Удалены соответствующие файлы Zephyr для Claude Code."
 fi
 
-echo "Start a new harness session so it forgets removed skill and agent definitions."
+echo "Начните новую сессию harness, чтобы она забыла удалённые определения skill и agents."

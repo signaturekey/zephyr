@@ -563,8 +563,8 @@ update_complete=yes
 trap - EXIT HUP INT TERM
 
 if [ "$codex_was_installed" = no ] && [ "$claude_was_installed" = no ]; then
-  echo "Installed Zephyr harness package."
+  echo "Пакет harness Zephyr установлен."
 else
-  echo "Updated Zephyr harness package. Previous installation: $backup_root/previous"
+  echo "Пакет harness Zephyr обновлён. Предыдущая установка: $backup_root/previous"
 fi
-echo "Start a new harness session so it loads the updated skill and agents."
+echo "Начните новую сессию harness, чтобы загрузились обновлённые skill и agents."

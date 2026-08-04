@@ -46,5 +46,5 @@ if [ "$mode" = check ]; then
   exit "$status"
 fi
 
-echo "Zephyr Codex and Claude discovery files synchronized."
-echo "Restart a client session if its agents or skills directory was created after that session started."
+echo "Файлы discovery Zephyr для Codex и Claude синхронизированы."
+echo "Перезапустите клиентскую сессию, если каталог её agents или skills был создан после запуска сессии."

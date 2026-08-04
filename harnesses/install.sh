@@ -250,7 +250,7 @@ if [ "$install_codex" = yes ]; then
     install_file "$source_path" "$codex_agents_dir/${source_path##*/}"
     install_file "$source_path" "$codex_skill_root/references/agents/${source_path##*/}"
   done
-  echo "Installed Zephyr for Codex under $codex_skill_root and $codex_agents_dir."
+  echo "Zephyr для Codex установлен в $codex_skill_root и $codex_agents_dir."
 fi
 
 if [ "$install_claude" = yes ]; then
@@ -266,7 +266,7 @@ if [ "$install_claude" = yes ]; then
     install_file "$source_path" "$claude_agents_dir/${source_path##*/}"
     install_file "$source_path" "$claude_skill_root/references/agents/${source_path##*/}"
   done
-  echo "Installed Zephyr for Claude Code under $claude_skill_root and $claude_agents_dir."
+  echo "Zephyr для Claude Code установлен в $claude_skill_root и $claude_agents_dir."
 fi
 
-echo "Start a new harness session so it loads the installed skill and agents."
+echo "Начните новую сессию harness, чтобы загрузились установленный skill и agents."

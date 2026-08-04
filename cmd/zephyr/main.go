@@ -19,20 +19,20 @@ import (
 var version = "dev"
 
 type CLI struct {
-	RunRoot string `name:"run-root" env:"ZEPHYR_RUN_ROOT" help:"Run store root (default: XDG cache or ~/.cache/zephyr/runs)." type:"path"`
+	RunRoot string `name:"run-root" env:"ZEPHYR_RUN_ROOT" help:"Корень хранилища запусков (по умолчанию: XDG cache или ~/.cache/zephyr/runs)." type:"path"`
 
-	Init               InitCmd               `cmd:"" help:"Create an immutable run outside the reviewed repository."`
-	Collect            CollectCmd            `cmd:"" help:"Collect a read-only system-Git snapshot."`
-	Context            ContextCmd            `cmd:"" help:"Record harness capabilities, import frozen business context, or add coverage limits."`
-	Route              RouteCmd              `cmd:"" help:"Build and validate the packet, then select reviewer roles."`
-	ValidateCandidates ValidateCandidatesCmd `cmd:"" name:"validate-candidates" help:"Validate and precheck one isolated reviewer's JSON."`
-	ValidateVerdicts   ValidateVerdictsCmd   `cmd:"" name:"validate-verdicts" help:"Validate the evidence-gate JSON against the exact candidate set."`
-	MarkFailed         MarkFailedCmd         `cmd:"" name:"mark-failed" help:"Record a failed reviewer or evidence gate without losing other results."`
-	Aggregate          AggregateCmd          `cmd:"" help:"Apply verdicts, deduplicate findings, and create review.json."`
-	Render             RenderCmd             `cmd:"" help:"Render review.md from validated review.json."`
-	Inspect            InspectCmd            `cmd:"" help:"Show run state, counts, limits, and artifact paths."`
-	Harness            HarnessCmd            `cmd:"" help:"Install embedded Zephyr skills and agents into a local harness."`
-	Version            VersionCmd            `cmd:"" help:"Print the Zephyr build version."`
+	Init               InitCmd               `cmd:"" help:"Создать неизменяемый запуск вне проверяемого репозитория."`
+	Collect            CollectCmd            `cmd:"" help:"Собрать read-only снимок через системный Git."`
+	Context            ContextCmd            `cmd:"" help:"Зафиксировать возможности harness, импортировать бизнес-контекст или добавить ограничения покрытия."`
+	Route              RouteCmd              `cmd:"" help:"Собрать и проверить пакет, затем выбрать роли ревьюеров."`
+	ValidateCandidates ValidateCandidatesCmd `cmd:"" name:"validate-candidates" help:"Проверить JSON одного изолированного ревьюера и выполнить precheck."`
+	ValidateVerdicts   ValidateVerdictsCmd   `cmd:"" name:"validate-verdicts" help:"Проверить JSON evidence-gate относительно точного набора кандидатов."`
+	MarkFailed         MarkFailedCmd         `cmd:"" name:"mark-failed" help:"Зафиксировать сбой ревьюера или evidence-gate, не теряя остальные результаты."`
+	Aggregate          AggregateCmd          `cmd:"" help:"Применить вердикты, устранить дубли и создать review.json."`
+	Render             RenderCmd             `cmd:"" help:"Сформировать review.md из проверенного review.json."`
+	Inspect            InspectCmd            `cmd:"" help:"Показать состояние запуска, счётчики, ограничения и пути к артефактам."`
+	Harness            HarnessCmd            `cmd:"" help:"Установить встроенные skills и agents Zephyr в локальный harness."`
+	Version            VersionCmd            `cmd:"" help:"Вывести версию сборки Zephyr."`
 }
 
 type runtime struct {
@@ -43,11 +43,11 @@ type runtime struct {
 }
 
 type HarnessCmd struct {
-	Install HarnessInstallCmd `cmd:"" help:"Install embedded Zephyr assets into Codex, Claude Code, or both."`
+	Install HarnessInstallCmd `cmd:"" help:"Установить встроенные ресурсы Zephyr в Codex, Claude Code или оба harness."`
 }
 
 type HarnessInstallCmd struct {
-	Surface string `arg:"" required:"" enum:"codex,claude,all" help:"Harness surface: codex, claude, or all."`
+	Surface string `arg:"" required:"" enum:"codex,claude,all" help:"Целевой harness: codex, claude или all."`
 }
 
 func (command *HarnessInstallCmd) Run(app *runtime) error {
@@ -70,7 +70,7 @@ func runMain(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var cli CLI
 	parser, err := kong.New(&cli,
 		kong.Name("zephyr"),
-		kong.Description("Local, read-only, evidence-gated review core for Codex App and Claude Code."),
+		kong.Description("Локальное read-only ядро ревью с проверкой доказательств для Codex App и Claude Code."),
 		kong.UsageOnError(),
 		kong.Writers(stdout, stderr),
 	)
@@ -137,12 +137,12 @@ func readInput(reader io.Reader, path string, maximum int64) ([]byte, error) {
 }
 
 type InitCmd struct {
-	Repo   string `default:"." help:"Repository directory." type:"path"`
-	Mode   string `default:"auto" enum:"auto,plan,implementation,alignment" help:"Review mode."`
-	Source string `help:"Git scope: working-tree, staged, branch, commit-range, or plan-only; inferred when omitted."`
-	Base   string `help:"Base ref for branch review; implies source=branch."`
-	Range  string `name:"range" help:"Commit range A..B or A...B; implies source=commit-range."`
-	Plan   string `help:"Plan or change-spec to snapshot." type:"path"`
+	Repo   string `default:"." help:"Каталог репозитория." type:"path"`
+	Mode   string `default:"auto" enum:"auto,plan,implementation,alignment" help:"Режим ревью."`
+	Source string `help:"Git-область: working-tree, staged, branch, commit-range или plan-only; без значения определяется автоматически."`
+	Base   string `help:"Базовая ссылка для ревью ветки; задаёт source=branch."`
+	Range  string `name:"range" help:"Диапазон коммитов A..B или A...B; задаёт source=commit-range."`
+	Plan   string `help:"План или change-spec для снимка." type:"path"`
 }
 
 func (command *InitCmd) Run(app *runtime) error {
@@ -157,11 +157,11 @@ func (command *InitCmd) Run(app *runtime) error {
 }
 
 type CollectCmd struct {
-	RunID            string `name:"run" required:"" help:"Run ID returned by init."`
-	IncludeGenerated bool   `help:"Include generated file contents (restricted paths remain excluded)."`
-	IncludeVendor    bool   `help:"Include vendor file contents (restricted paths remain excluded)."`
-	IncludeUntracked bool   `name:"include-untracked" help:"Explicitly include safe, bounded untracked contents."`
-	MaxUntracked     int64  `name:"max-untracked-bytes" help:"Maximum bytes per explicitly included untracked file."`
+	RunID            string `name:"run" required:"" help:"ID запуска, возвращённый init."`
+	IncludeGenerated bool   `help:"Включить содержимое сгенерированных файлов (restricted paths всё равно исключаются)."`
+	IncludeVendor    bool   `help:"Включить содержимое vendor-файлов (restricted paths всё равно исключаются)."`
+	IncludeUntracked bool   `name:"include-untracked" help:"Явно включить безопасное ограниченное содержимое неотслеживаемых файлов."`
+	MaxUntracked     int64  `name:"max-untracked-bytes" help:"Максимальный размер каждого явно включённого неотслеживаемого файла."`
 }
 
 func (command *CollectCmd) Run(app *runtime) error {
@@ -176,16 +176,16 @@ func (command *CollectCmd) Run(app *runtime) error {
 }
 
 type ContextCmd struct {
-	Add        ContextAddCmd        `cmd:"" help:"Import a normalized Jira, Confluence, or Bitbucket snapshot before routing."`
-	Capability ContextCapabilityCmd `cmd:"" help:"Record the harness capability status required before routing."`
-	Limit      ContextLimitCmd      `cmd:"" help:"Record an unavailable or truncated source."`
+	Add        ContextAddCmd        `cmd:"" help:"Импортировать нормализованный снимок Jira, Confluence или Bitbucket до routing."`
+	Capability ContextCapabilityCmd `cmd:"" help:"Зафиксировать необходимый перед routing статус возможности harness."`
+	Limit      ContextLimitCmd      `cmd:"" help:"Зафиксировать недоступный или усечённый источник."`
 }
 
 type ContextCapabilityCmd struct {
-	RunID  string `name:"run" required:"" help:"Run ID."`
-	Source string `required:"" enum:"jira,confluence,bitbucket" help:"Harness capability source."`
-	Status string `required:"" enum:"available,unavailable,not-required" help:"Capability status for this run."`
-	Reason string `help:"Concise reason; required for unavailable and not-required."`
+	RunID  string `name:"run" required:"" help:"ID запуска."`
+	Source string `required:"" enum:"jira,confluence,bitbucket" help:"Источник возможности harness."`
+	Status string `required:"" enum:"available,unavailable,not-required" help:"Статус возможности для этого запуска."`
+	Reason string `help:"Краткая причина; обязательна при unavailable и not-required."`
 }
 
 func (command *ContextCapabilityCmd) Run(app *runtime) error {
@@ -200,11 +200,11 @@ func (command *ContextCapabilityCmd) Run(app *runtime) error {
 }
 
 type ContextAddCmd struct {
-	RunID  string `name:"run" required:"" help:"Run ID."`
-	Source string `required:"" enum:"jira,confluence,bitbucket" help:"Business source."`
-	Key    string `required:"" help:"Stable issue key or page/object ID."`
-	URL    string `help:"Source URL, when available."`
-	Input  string `required:"" help:"Normalized Markdown file, or - for stdin."`
+	RunID  string `name:"run" required:"" help:"ID запуска."`
+	Source string `required:"" enum:"jira,confluence,bitbucket" help:"Бизнес-источник."`
+	Key    string `required:"" help:"Стабильный ключ задачи или ID страницы/объекта."`
+	URL    string `help:"URL источника, если доступен."`
+	Input  string `required:"" help:"Нормализованный Markdown-файл или - для stdin."`
 }
 
 func (command *ContextAddCmd) Run(app *runtime) error {
@@ -222,9 +222,9 @@ func (command *ContextAddCmd) Run(app *runtime) error {
 }
 
 type ContextLimitCmd struct {
-	RunID  string `name:"run" required:"" help:"Run ID."`
-	Source string `required:"" help:"Unavailable or truncated source name."`
-	Reason string `required:"" help:"Concise coverage limitation."`
+	RunID  string `name:"run" required:"" help:"ID запуска."`
+	Source string `required:"" help:"Имя недоступного или усечённого источника."`
+	Reason string `required:"" help:"Краткое ограничение покрытия."`
 }
 
 func (command *ContextLimitCmd) Run(app *runtime) error {
@@ -238,9 +238,9 @@ func (command *ContextLimitCmd) Run(app *runtime) error {
 }
 
 type RouteCmd struct {
-	RunID       string   `name:"run" required:"" help:"Run ID."`
-	AddRole     []string `name:"add-role" help:"Force-include a known reviewer role; repeatable."`
-	ExcludeRole []string `name:"exclude-role" help:"Force-exclude an optional reviewer role; repeatable."`
+	RunID       string   `name:"run" required:"" help:"ID запуска."`
+	AddRole     []string `name:"add-role" help:"Принудительно включить известную роль ревьюера; можно повторять."`
+	ExcludeRole []string `name:"exclude-role" help:"Принудительно исключить необязательную роль ревьюера; можно повторять."`
 }
 
 func (command *RouteCmd) Run(app *runtime) error {
@@ -254,9 +254,9 @@ func (command *RouteCmd) Run(app *runtime) error {
 }
 
 type ValidateCandidatesCmd struct {
-	RunID string `name:"run" required:"" help:"Run ID."`
-	Role  string `required:"" help:"Selected reviewer role."`
-	Input string `required:"" help:"Reviewer JSON file, or - for stdin."`
+	RunID string `name:"run" required:"" help:"ID запуска."`
+	Role  string `required:"" help:"Выбранная роль ревьюера."`
+	Input string `required:"" help:"JSON-файл ревьюера или - для stdin."`
 }
 
 func (command *ValidateCandidatesCmd) Run(app *runtime) error {
@@ -274,8 +274,8 @@ func (command *ValidateCandidatesCmd) Run(app *runtime) error {
 }
 
 type ValidateVerdictsCmd struct {
-	RunID string `name:"run" required:"" help:"Run ID."`
-	Input string `required:"" help:"Evidence-gate JSON file, or - for stdin."`
+	RunID string `name:"run" required:"" help:"ID запуска."`
+	Input string `required:"" help:"JSON-файл evidence-gate или - для stdin."`
 }
 
 func (command *ValidateVerdictsCmd) Run(app *runtime) error {
@@ -291,10 +291,10 @@ func (command *ValidateVerdictsCmd) Run(app *runtime) error {
 }
 
 type MarkFailedCmd struct {
-	RunID  string `name:"run" required:"" help:"Run ID."`
-	Stage  string `required:"" enum:"review,evidence" help:"Failed harness stage."`
-	Role   string `help:"Selected role; required only for stage=review."`
-	Reason string `required:"" help:"Concise safe failure reason."`
+	RunID  string `name:"run" required:"" help:"ID запуска."`
+	Stage  string `required:"" enum:"review,evidence" help:"Сбойный этап harness."`
+	Role   string `help:"Выбранная роль; обязательна только при stage=review."`
+	Reason string `required:"" help:"Краткая безопасная причина сбоя."`
 }
 
 func (command *MarkFailedCmd) Run(app *runtime) error {
@@ -308,7 +308,7 @@ func (command *MarkFailedCmd) Run(app *runtime) error {
 }
 
 type AggregateCmd struct {
-	RunID string `name:"run" required:"" help:"Run ID."`
+	RunID string `name:"run" required:"" help:"ID запуска."`
 }
 
 func (command *AggregateCmd) Run(app *runtime) error {
@@ -320,8 +320,8 @@ func (command *AggregateCmd) Run(app *runtime) error {
 }
 
 type RenderCmd struct {
-	RunID     string `name:"run" required:"" help:"Run ID."`
-	IncludeP3 bool   `name:"include-p3" help:"Include P3 findings even when higher priorities exist."`
+	RunID     string `name:"run" required:"" help:"ID запуска."`
+	IncludeP3 bool   `name:"include-p3" help:"Включить P3-находки, даже когда есть более высокие приоритеты."`
 }
 
 func (command *RenderCmd) Run(app *runtime) error {
@@ -333,7 +333,7 @@ func (command *RenderCmd) Run(app *runtime) error {
 }
 
 type InspectCmd struct {
-	RunID string `name:"run" required:"" help:"Run ID."`
+	RunID string `name:"run" required:"" help:"ID запуска."`
 }
 
 func (command *InspectCmd) Run(app *runtime) error {
