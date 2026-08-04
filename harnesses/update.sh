@@ -5,7 +5,7 @@ umask 077
 
 usage() {
   cat >&2 <<'EOF'
-usage: sh harnesses/update.sh --codex|--claude|--all
+usage: sh harnesses/update.sh --codex|--claude|--opencode|--all
 
 Safely replaces an existing, unmodified Zephyr harness installation with the
 package from this checkout. The previous installation is kept in a backup and
@@ -17,14 +17,22 @@ case "${1:-}" in
   --codex)
     update_codex=yes
     update_claude=no
+    update_opencode=no
     ;;
   --claude)
     update_codex=no
     update_claude=yes
+    update_opencode=no
+    ;;
+  --opencode)
+    update_codex=no
+    update_claude=no
+    update_opencode=yes
     ;;
   --all)
     update_codex=yes
     update_claude=yes
+    update_opencode=yes
     ;;
   --help|-h)
     usage
@@ -53,10 +61,13 @@ codex_skills_dir=${ZEPHYR_CODEX_SKILLS_DIR:-"$HOME/.agents/skills"}
 codex_agents_dir=${ZEPHYR_CODEX_AGENTS_DIR:-"$HOME/.codex/agents"}
 claude_skills_dir=${ZEPHYR_CLAUDE_SKILLS_DIR:-"$HOME/.claude/skills"}
 claude_agents_dir=${ZEPHYR_CLAUDE_AGENTS_DIR:-"$HOME/.claude/agents"}
+opencode_skills_dir=${ZEPHYR_OPENCODE_SKILLS_DIR:-"$HOME/.config/opencode/skills"}
+opencode_agents_dir=${ZEPHYR_OPENCODE_AGENTS_DIR:-"$HOME/.config/opencode/agents"}
 backup_parent=${ZEPHYR_BACKUP_DIR:-"$HOME/.codex/backups"}
 
 codex_skill_root="$codex_skills_dir/zephyr"
 claude_skill_root="$claude_skills_dir/zephyr"
+opencode_skill_root="$opencode_skills_dir/zephyr"
 
 require_absolute() {
   absolute_path=$1
@@ -209,7 +220,7 @@ verify_no_unknown_skill_files() {
       SKILL.md|references/assets.sha256)
         ;;
       scripts/dispatch.sh)
-        if [ "$harness_kind" != codex ]; then
+        if [ "$harness_kind" != codex ] && [ "$harness_kind" != opencode ]; then
           echo "unexpected installed skill file: $installed_file" >&2
           exit 1
         fi
@@ -239,11 +250,12 @@ verify_no_unknown_skill_files() {
       references/agents/zephyr-*)
         asset_name=${relative_file#references/agents/}
         expected_asset="harnesses/$harness_kind/agents/$asset_name"
-        if [ "$harness_kind" = codex ]; then
-          expected_asset="harnesses/codex/agents/$asset_name"
-        else
-          expected_asset="harnesses/claude-code/agents/$asset_name"
-        fi
+        case "$harness_kind" in
+          codex) expected_asset="harnesses/codex/agents/$asset_name" ;;
+          claude-code) expected_asset="harnesses/claude-code/agents/$asset_name" ;;
+          opencode) expected_asset="harnesses/opencode/agents/$asset_name" ;;
+          *) echo "unknown harness kind: $harness_kind" >&2; exit 1 ;;
+        esac
         [ -n "$(manifest_hash "$installed_manifest" "$expected_asset")" ] || {
           echo "installed agent is absent from its manifest: $installed_file" >&2
           exit 1
@@ -309,6 +321,19 @@ verify_claude_installation() {
   verify_manifest_group "$installed_skill" "$installed_manifest" "harnesses/claude-code/agents/" "agents" ".md"
   verify_no_unknown_skill_files "$installed_skill" "$installed_manifest" claude-code
   verify_global_agents "$installed_skill" "$claude_agents_dir" ".md"
+}
+
+verify_opencode_installation() {
+  installed_skill=$opencode_skill_root
+  installed_manifest="$installed_skill/references/assets.sha256"
+  require_regular_file "$installed_manifest"
+  verify_installed_file "$installed_skill/SKILL.md" "$installed_manifest" "harnesses/opencode/SKILL.md"
+  verify_installed_file "$installed_skill/scripts/dispatch.sh" "$installed_manifest" "harnesses/opencode/dispatch.sh"
+  verify_manifest_group "$installed_skill" "$installed_manifest" "roles/" "roles" ".md"
+  verify_manifest_group "$installed_skill" "$installed_manifest" "schemas/" "schemas" ".json"
+  verify_manifest_group "$installed_skill" "$installed_manifest" "harnesses/opencode/agents/" "agents" ".md"
+  verify_no_unknown_skill_files "$installed_skill" "$installed_manifest" opencode
+  verify_global_agents "$installed_skill" "$opencode_agents_dir" ".md"
 }
 
 surface_is_absent() {
@@ -442,12 +467,13 @@ restore_old_surface() {
   done
 }
 
-for update_path in "$codex_skills_dir" "$codex_agents_dir" "$claude_skills_dir" "$claude_agents_dir" "$backup_parent"; do
+for update_path in "$codex_skills_dir" "$codex_agents_dir" "$claude_skills_dir" "$claude_agents_dir" "$opencode_skills_dir" "$opencode_agents_dir" "$backup_parent"; do
   require_absolute "$update_path"
 done
 
 codex_was_installed=no
 claude_was_installed=no
+opencode_was_installed=no
 
 if [ "$update_codex" = yes ]; then
   reject_symlink_components "$codex_skill_root"
@@ -467,13 +493,30 @@ if [ "$update_claude" = yes ]; then
   fi
 fi
 
+if [ "$update_opencode" = yes ]; then
+  reject_symlink_components "$opencode_skill_root"
+  reject_symlink_components "$opencode_agents_dir"
+  if ! surface_is_absent "$opencode_skill_root" "$opencode_agents_dir" ".md"; then
+    verify_opencode_installation
+    opencode_was_installed=yes
+  fi
+fi
+
 if [ "$update_codex" = yes ] && [ "$update_claude" = yes ] && [ "$codex_skill_root" = "$claude_skill_root" ]; then
-  echo "Codex and Claude skill roots must be distinct: $codex_skill_root" >&2
+  echo "harness skill roots must be distinct: $codex_skill_root" >&2
+  exit 1
+fi
+if [ "$update_codex" = yes ] && [ "$update_opencode" = yes ] && [ "$codex_skill_root" = "$opencode_skill_root" ]; then
+  echo "harness skill roots must be distinct: $codex_skill_root" >&2
+  exit 1
+fi
+if [ "$update_claude" = yes ] && [ "$update_opencode" = yes ] && [ "$claude_skill_root" = "$opencode_skill_root" ]; then
+  echo "harness skill roots must be distinct: $claude_skill_root" >&2
   exit 1
 fi
 
 case "$backup_parent/" in
-  "$codex_skill_root"/*|"$claude_skill_root"/*)
+  "$codex_skill_root"/*|"$claude_skill_root"/*|"$opencode_skill_root"/*)
     echo "backup directory must be outside installed Zephyr skills: $backup_parent" >&2
     exit 1
     ;;
@@ -488,12 +531,16 @@ stage_codex_skills="$backup_root/stage/codex-skills"
 stage_codex_agents="$backup_root/stage/codex-agents"
 stage_claude_skills="$backup_root/stage/claude-skills"
 stage_claude_agents="$backup_root/stage/claude-agents"
-mkdir -p "$stage_codex_skills" "$stage_codex_agents" "$stage_claude_skills" "$stage_claude_agents"
+stage_opencode_skills="$backup_root/stage/opencode-skills"
+stage_opencode_agents="$backup_root/stage/opencode-agents"
+mkdir -p "$stage_codex_skills" "$stage_codex_agents" "$stage_claude_skills" "$stage_claude_agents" "$stage_opencode_skills" "$stage_opencode_agents"
 
 ZEPHYR_CODEX_SKILLS_DIR="$stage_codex_skills" \
 ZEPHYR_CODEX_AGENTS_DIR="$stage_codex_agents" \
 ZEPHYR_CLAUDE_SKILLS_DIR="$stage_claude_skills" \
 ZEPHYR_CLAUDE_AGENTS_DIR="$stage_claude_agents" \
+ZEPHYR_OPENCODE_SKILLS_DIR="$stage_opencode_skills" \
+ZEPHYR_OPENCODE_AGENTS_DIR="$stage_opencode_agents" \
   sh "$script_dir/install.sh" "$1" >/dev/null
 
 if [ "$update_codex" = yes ]; then
@@ -501,6 +548,9 @@ if [ "$update_codex" = yes ]; then
 fi
 if [ "$update_claude" = yes ]; then
   preflight_staged_agents "$stage_claude_agents" "$claude_skill_root" "$claude_agents_dir" ".md"
+fi
+if [ "$update_opencode" = yes ]; then
+  preflight_staged_agents "$stage_opencode_agents" "$opencode_skill_root" "$opencode_agents_dir" ".md"
 fi
 
 mutation_started=no
@@ -528,6 +578,13 @@ rollback_update() {
         rollback_verified=no
       fi
     fi
+    if [ "$update_opencode" = yes ]; then
+      move_new_surface_aside "$opencode_skill_root" "$opencode_agents_dir" "$backup_root/failed-new/opencode" "$backup_root/previous/opencode" "$repo_root/harnesses/opencode/agents" ".md" "$publication_started"
+      restore_old_surface "$opencode_skill_root" "$opencode_agents_dir" "$backup_root/previous/opencode"
+      if ! (verify_opencode_installation); then
+        rollback_verified=no
+      fi
+    fi
     if [ "$rollback_verified" = yes ]; then
       echo "Previous installation restored. Diagnostic files: $backup_root" >&2
     else
@@ -549,6 +606,9 @@ fi
 if [ "$update_claude" = yes ] && [ "$claude_was_installed" = yes ]; then
   move_old_surface "$claude_skill_root" "$claude_agents_dir" "$backup_root/previous/claude" ".md"
 fi
+if [ "$update_opencode" = yes ] && [ "$opencode_was_installed" = yes ]; then
+  move_old_surface "$opencode_skill_root" "$opencode_agents_dir" "$backup_root/previous/opencode" ".md"
+fi
 
 publication_started=yes
 
@@ -558,11 +618,14 @@ fi
 if [ "$update_claude" = yes ]; then
   publish_new_surface "$stage_claude_skills/zephyr" "$stage_claude_agents" "$claude_skill_root" "$claude_agents_dir" ".md"
 fi
+if [ "$update_opencode" = yes ]; then
+  publish_new_surface "$stage_opencode_skills/zephyr" "$stage_opencode_agents" "$opencode_skill_root" "$opencode_agents_dir" ".md"
+fi
 
 update_complete=yes
 trap - EXIT HUP INT TERM
 
-if [ "$codex_was_installed" = no ] && [ "$claude_was_installed" = no ]; then
+if [ "$codex_was_installed" = no ] && [ "$claude_was_installed" = no ] && [ "$opencode_was_installed" = no ]; then
   echo "Пакет harness Zephyr установлен."
 else
   echo "Пакет harness Zephyr обновлён. Предыдущая установка: $backup_root/previous"

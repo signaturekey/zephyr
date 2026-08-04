@@ -3,13 +3,14 @@ GOFMT ?= gofmt
 BINARY ?= bin/zephyr
 GO_FILES := $(shell find . -type f -name '*.go' -not -path './.git/*' -not -path './vendor/*' | sort)
 
-.PHONY: help build install install-cli install-codex install-claude install-all install-skill-codex install-skill-claude install-skill-all uninstall uninstall-skill uninstall-cli update update-codex update-claude update-all fmt fmt-check test test-golden test-evals vet validate-harnesses check
+.PHONY: help build install install-cli install-codex install-claude install-opencode install-all install-skill-codex install-skill-claude install-skill-opencode install-skill-all uninstall uninstall-skill uninstall-cli update update-codex update-claude update-opencode update-all fmt fmt-check test test-golden test-evals vet validate-harnesses check
 
 help:
 	@echo "build               собрать $(BINARY)"
 	@echo "install             установить только Zephyr CLI"
 	@echo "install-codex       установить CLI и пакет harness Codex"
 	@echo "install-claude      установить CLI и пакет harness Claude"
+	@echo "install-opencode    установить CLI и пакет harness OpenCode"
 	@echo "install-all         установить CLI и все пакеты harness"
 	@echo "install-skill-*     установить один или все пакеты harness"
 	@echo "uninstall           удалить Zephyr CLI и все пакеты harness"
@@ -18,14 +19,15 @@ help:
 	@echo "update              обновить binary и harness Codex"
 	@echo "update-codex        обновить binary и harness Codex"
 	@echo "update-claude       обновить binary и harness Claude"
-	@echo "update-all          обновить binary и оба harness"
+	@echo "update-opencode     обновить binary и harness OpenCode"
+	@echo "update-all          обновить binary и все harness"
 	@echo "fmt                  отформатировать все Go-файлы"
 	@echo "fmt-check            завершиться с ошибкой, если Go-файлам нужно форматирование"
 	@echo "test                 запустить все Go-тесты"
 	@echo "test-golden          запустить 12 детерминированных golden-fixtures"
 	@echo "test-evals           проверить записи последующей оценки"
 	@echo "vet                  запустить go vet"
-	@echo "validate-harnesses   проверить ресурсы harness Codex и Claude"
+	@echo "validate-harnesses   проверить ресурсы harness Codex, Claude и OpenCode"
 	@echo "check                запустить форматирование, тесты, vet и проверку harness"
 
 build:
@@ -45,6 +47,10 @@ install-claude:
 	$(MAKE) install-cli
 	$(MAKE) install-skill-claude
 
+install-opencode:
+	$(MAKE) install-cli
+	$(MAKE) install-skill-opencode
+
 install-all:
 	$(MAKE) install-cli
 	$(MAKE) install-skill-all
@@ -55,12 +61,15 @@ install-skill-codex:
 install-skill-claude:
 	sh harnesses/install.sh --claude
 
+install-skill-opencode:
+	sh harnesses/install.sh --opencode
+
 install-skill-all:
 	sh harnesses/install.sh --all
 
 uninstall:
-	sh harnesses/uninstall.sh --all
-	GO="$(GO)" sh harnesses/uninstall-cli.sh
+	$(MAKE) uninstall-skill
+	$(MAKE) uninstall-cli
 
 uninstall-skill:
 	sh harnesses/uninstall.sh --all
@@ -77,6 +86,10 @@ update-codex:
 update-claude:
 	$(MAKE) install
 	sh harnesses/update.sh --claude
+
+update-opencode:
+	$(MAKE) install
+	sh harnesses/update.sh --opencode
 
 update-all:
 	$(MAKE) install

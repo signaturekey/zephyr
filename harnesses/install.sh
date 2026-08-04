@@ -5,7 +5,7 @@ umask 077
 
 usage() {
   cat >&2 <<'EOF'
-usage: sh harnesses/install.sh --codex|--claude|--all
+usage: sh harnesses/install.sh --codex|--claude|--opencode|--all
 
 Installs Zephyr skills, immutable prompt/schema assets, and custom agents into
 the current user's harness directories. Existing different files are never
@@ -17,14 +17,22 @@ case "${1:-}" in
   --codex)
     install_codex=yes
     install_claude=no
+    install_opencode=no
     ;;
   --claude)
     install_codex=no
     install_claude=yes
+    install_opencode=no
+    ;;
+  --opencode)
+    install_codex=no
+    install_claude=no
+    install_opencode=yes
     ;;
   --all)
     install_codex=yes
     install_claude=yes
+    install_opencode=yes
     ;;
   --help|-h)
     usage
@@ -53,6 +61,8 @@ codex_skills_dir=${ZEPHYR_CODEX_SKILLS_DIR:-"$HOME/.agents/skills"}
 codex_agents_dir=${ZEPHYR_CODEX_AGENTS_DIR:-"$HOME/.codex/agents"}
 claude_skills_dir=${ZEPHYR_CLAUDE_SKILLS_DIR:-"$HOME/.claude/skills"}
 claude_agents_dir=${ZEPHYR_CLAUDE_AGENTS_DIR:-"$HOME/.claude/agents"}
+opencode_skills_dir=${ZEPHYR_OPENCODE_SKILLS_DIR:-"$HOME/.config/opencode/skills"}
+opencode_agents_dir=${ZEPHYR_OPENCODE_AGENTS_DIR:-"$HOME/.config/opencode/agents"}
 
 require_absolute() {
   absolute_path=$1
@@ -181,6 +191,8 @@ require_source "$repo_root/harnesses/codex/SKILL.md"
 require_source "$repo_root/harnesses/codex/dispatch.sh"
 require_source "$repo_root/harnesses/codex/discovery/agents/openai.yaml"
 require_source "$repo_root/harnesses/claude-code/SKILL.md"
+require_source "$repo_root/harnesses/opencode/SKILL.md"
+require_source "$repo_root/harnesses/opencode/dispatch.sh"
 for source_path in "$repo_root"/roles/*.md "$repo_root"/schemas/*.json; do
   require_source "$source_path"
 done
@@ -227,12 +239,42 @@ if [ "$install_claude" = yes ]; then
   done
 fi
 
-if [ "$install_codex" = yes ] && [ "$install_claude" = yes ] && [ "$codex_skill_root" = "$claude_skill_root" ]; then
-  echo "Codex and Claude skill roots must be distinct: $codex_skill_root" >&2
-  exit 1
+if [ "$install_opencode" = yes ]; then
+  require_absolute "$opencode_skills_dir"
+  require_absolute "$opencode_agents_dir"
+  opencode_skill_root="$opencode_skills_dir/zephyr"
+
+  check_destination "$repo_root/harnesses/opencode/SKILL.md" "$opencode_skill_root/SKILL.md"
+  check_destination "$repo_root/harnesses/opencode/dispatch.sh" "$opencode_skill_root/scripts/dispatch.sh"
+  check_destination "$repo_root/harnesses/assets.sha256" "$opencode_skill_root/references/assets.sha256"
+  for source_path in "$repo_root"/roles/*.md; do
+    check_destination "$source_path" "$opencode_skill_root/references/roles/${source_path##*/}"
+  done
+  for source_path in "$repo_root"/schemas/*.json; do
+    check_destination "$source_path" "$opencode_skill_root/references/schemas/${source_path##*/}"
+  done
+  for source_path in "$repo_root"/harnesses/opencode/agents/zephyr-*.md; do
+    require_source "$source_path"
+    check_destination "$source_path" "$opencode_agents_dir/${source_path##*/}"
+    check_destination "$source_path" "$opencode_skill_root/references/agents/${source_path##*/}"
+  done
 fi
 
+for root_pair in \
+  "${codex_skill_root:-}|${claude_skill_root:-}" \
+  "${codex_skill_root:-}|${opencode_skill_root:-}" \
+  "${claude_skill_root:-}|${opencode_skill_root:-}"
+do
+  left_root=${root_pair%%|*}
+  right_root=${root_pair#*|}
+  if [ -n "$left_root" ] && [ -n "$right_root" ] && [ "$left_root" = "$right_root" ]; then
+    echo "harness skill roots must be distinct: $left_root" >&2
+    exit 1
+  fi
+done
+
 sh "$script_dir/sync-discovery.sh" --check
+sh "$script_dir/opencode/sync-agents.sh" --check
 
 if [ "$install_codex" = yes ]; then
   install_file "$repo_root/harnesses/codex/SKILL.md" "$codex_skill_root/SKILL.md"
@@ -267,6 +309,24 @@ if [ "$install_claude" = yes ]; then
     install_file "$source_path" "$claude_skill_root/references/agents/${source_path##*/}"
   done
   echo "Zephyr для Claude Code установлен в $claude_skill_root и $claude_agents_dir."
+fi
+
+if [ "$install_opencode" = yes ]; then
+  install_file "$repo_root/harnesses/opencode/SKILL.md" "$opencode_skill_root/SKILL.md"
+  install_file "$repo_root/harnesses/opencode/dispatch.sh" "$opencode_skill_root/scripts/dispatch.sh"
+  chmod 700 "$opencode_skill_root/scripts/dispatch.sh"
+  install_file "$repo_root/harnesses/assets.sha256" "$opencode_skill_root/references/assets.sha256"
+  for source_path in "$repo_root"/roles/*.md; do
+    install_file "$source_path" "$opencode_skill_root/references/roles/${source_path##*/}"
+  done
+  for source_path in "$repo_root"/schemas/*.json; do
+    install_file "$source_path" "$opencode_skill_root/references/schemas/${source_path##*/}"
+  done
+  for source_path in "$repo_root"/harnesses/opencode/agents/zephyr-*.md; do
+    install_file "$source_path" "$opencode_agents_dir/${source_path##*/}"
+    install_file "$source_path" "$opencode_skill_root/references/agents/${source_path##*/}"
+  done
+  echo "Zephyr для OpenCode установлен в $opencode_skill_root и $opencode_agents_dir."
 fi
 
 echo "Начните новую сессию harness, чтобы загрузились установленный skill и agents."

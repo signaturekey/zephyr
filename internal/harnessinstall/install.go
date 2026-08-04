@@ -19,17 +19,20 @@ import (
 type Surface string
 
 const (
-	SurfaceCodex  Surface = "codex"
-	SurfaceClaude Surface = "claude"
-	SurfaceAll    Surface = "all"
+	SurfaceCodex    Surface = "codex"
+	SurfaceClaude   Surface = "claude"
+	SurfaceOpenCode Surface = "opencode"
+	SurfaceAll      Surface = "all"
 )
 
 type Options struct {
-	Surface         Surface
-	CodexSkillsDir  string
-	CodexAgentsDir  string
-	ClaudeSkillsDir string
-	ClaudeAgentsDir string
+	Surface           Surface
+	CodexSkillsDir    string
+	CodexAgentsDir    string
+	ClaudeSkillsDir   string
+	ClaudeAgentsDir   string
+	OpenCodeSkillsDir string
+	OpenCodeAgentsDir string
 }
 
 type Result struct {
@@ -50,16 +53,18 @@ func OptionsFromEnvironment(surface Surface) (Options, error) {
 		return Options{}, fmt.Errorf("resolve home directory: %w", err)
 	}
 	return Options{
-		Surface:         surface,
-		CodexSkillsDir:  environmentOr("ZEPHYR_CODEX_SKILLS_DIR", filepath.Join(home, ".agents", "skills")),
-		CodexAgentsDir:  environmentOr("ZEPHYR_CODEX_AGENTS_DIR", filepath.Join(home, ".codex", "agents")),
-		ClaudeSkillsDir: environmentOr("ZEPHYR_CLAUDE_SKILLS_DIR", filepath.Join(home, ".claude", "skills")),
-		ClaudeAgentsDir: environmentOr("ZEPHYR_CLAUDE_AGENTS_DIR", filepath.Join(home, ".claude", "agents")),
+		Surface:           surface,
+		CodexSkillsDir:    environmentOr("ZEPHYR_CODEX_SKILLS_DIR", filepath.Join(home, ".agents", "skills")),
+		CodexAgentsDir:    environmentOr("ZEPHYR_CODEX_AGENTS_DIR", filepath.Join(home, ".codex", "agents")),
+		ClaudeSkillsDir:   environmentOr("ZEPHYR_CLAUDE_SKILLS_DIR", filepath.Join(home, ".claude", "skills")),
+		ClaudeAgentsDir:   environmentOr("ZEPHYR_CLAUDE_AGENTS_DIR", filepath.Join(home, ".claude", "agents")),
+		OpenCodeSkillsDir: environmentOr("ZEPHYR_OPENCODE_SKILLS_DIR", filepath.Join(home, ".config", "opencode", "skills")),
+		OpenCodeAgentsDir: environmentOr("ZEPHYR_OPENCODE_AGENTS_DIR", filepath.Join(home, ".config", "opencode", "agents")),
 	}, nil
 }
 
 func Install(options Options) (Result, error) {
-	if options.Surface != SurfaceCodex && options.Surface != SurfaceClaude && options.Surface != SurfaceAll {
+	if options.Surface != SurfaceCodex && options.Surface != SurfaceClaude && options.Surface != SurfaceOpenCode && options.Surface != SurfaceAll {
 		return Result{}, fmt.Errorf("unsupported harness surface %q", options.Surface)
 	}
 	if err := verifyManifest(); err != nil {
@@ -91,6 +96,37 @@ func Install(options Options) (Result, error) {
 	}, nil
 }
 
+func Uninstall(options Options) (Result, error) {
+	if options.Surface != SurfaceCodex && options.Surface != SurfaceClaude && options.Surface != SurfaceOpenCode && options.Surface != SurfaceAll {
+		return Result{}, fmt.Errorf("unsupported harness surface %q", options.Surface)
+	}
+	if err := verifyManifest(); err != nil {
+		return Result{}, err
+	}
+	assets, err := installationAssets(options)
+	if err != nil {
+		return Result{}, err
+	}
+	for _, item := range assets {
+		if err := preflight(item); err != nil {
+			return Result{}, err
+		}
+	}
+	removed := make([]string, 0, len(assets))
+	for _, item := range assets {
+		if _, err := os.Lstat(item.destination); errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return Result{}, fmt.Errorf("inspect uninstall target %s: %w", item.destination, err)
+		}
+		if err := os.Remove(item.destination); err != nil {
+			return Result{}, fmt.Errorf("remove %s: %w", item.destination, err)
+		}
+		removed = append(removed, item.destination)
+	}
+	return Result{Surface: options.Surface, Files: removed, Message: "Начните новую сессию harness, чтобы она забыла удалённые skills и agents."}, nil
+}
+
 func environmentOr(name, fallback string) string {
 	if value := os.Getenv(name); value != "" {
 		return value
@@ -109,6 +145,13 @@ func installationAssets(options Options) ([]asset, error) {
 	}
 	if options.Surface == SurfaceClaude || options.Surface == SurfaceAll {
 		items, err := claudeAssets(options)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, items...)
+	}
+	if options.Surface == SurfaceOpenCode || options.Surface == SurfaceAll {
+		items, err := openCodeAssets(options)
 		if err != nil {
 			return nil, err
 		}
@@ -178,6 +221,42 @@ func claudeAssets(options Options) ([]asset, error) {
 	agentSources, err := fs.Glob(zephyrassets.Harness, "harnesses/claude-code/agents/zephyr-*.md")
 	if err != nil {
 		return nil, fmt.Errorf("list embedded Claude agents: %w", err)
+	}
+	for _, source := range agentSources {
+		name := filepath.Base(source)
+		result = append(result,
+			mapping(source, filepath.Join(agentsRoot, name), 0o600),
+			mapping(source, filepath.Join(skillRoot, "references", "agents", name), 0o600),
+		)
+	}
+	return result, nil
+}
+
+func openCodeAssets(options Options) ([]asset, error) {
+	skillRoot, err := secureRoot(options.OpenCodeSkillsDir, "zephyr")
+	if err != nil {
+		return nil, err
+	}
+	agentsRoot, err := secureRoot(options.OpenCodeAgentsDir)
+	if err != nil {
+		return nil, err
+	}
+	result := []asset{
+		mapping("harnesses/opencode/SKILL.md", filepath.Join(skillRoot, "SKILL.md"), 0o600),
+		mapping("harnesses/opencode/dispatch.sh", filepath.Join(skillRoot, "scripts", "dispatch.sh"), 0o700),
+		mapping("harnesses/assets.sha256", filepath.Join(skillRoot, "references", "assets.sha256"), 0o600),
+	}
+	result, err = appendGroup(result, "roles/*.md", filepath.Join(skillRoot, "references", "roles"), 0o600)
+	if err != nil {
+		return nil, err
+	}
+	result, err = appendGroup(result, "schemas/*.json", filepath.Join(skillRoot, "references", "schemas"), 0o600)
+	if err != nil {
+		return nil, err
+	}
+	agentSources, err := fs.Glob(zephyrassets.Harness, "harnesses/opencode/agents/zephyr-*.md")
+	if err != nil {
+		return nil, fmt.Errorf("list embedded OpenCode agents: %w", err)
 	}
 	for _, source := range agentSources {
 		name := filepath.Base(source)

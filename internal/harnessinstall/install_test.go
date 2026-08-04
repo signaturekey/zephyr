@@ -3,17 +3,20 @@ package harnessinstall
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestInstallAll(t *testing.T) {
 	root := resolvedTempDir(t)
 	result, err := Install(Options{
-		Surface:         SurfaceAll,
-		CodexSkillsDir:  filepath.Join(root, "codex-skills"),
-		CodexAgentsDir:  filepath.Join(root, "codex-agents"),
-		ClaudeSkillsDir: filepath.Join(root, "claude-skills"),
-		ClaudeAgentsDir: filepath.Join(root, "claude-agents"),
+		Surface:           SurfaceAll,
+		CodexSkillsDir:    filepath.Join(root, "codex-skills"),
+		CodexAgentsDir:    filepath.Join(root, "codex-agents"),
+		ClaudeSkillsDir:   filepath.Join(root, "claude-skills"),
+		ClaudeAgentsDir:   filepath.Join(root, "claude-agents"),
+		OpenCodeSkillsDir: filepath.Join(root, "opencode-skills"),
+		OpenCodeAgentsDir: filepath.Join(root, "opencode-agents"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -25,6 +28,9 @@ func TestInstallAll(t *testing.T) {
 		filepath.Join(root, "codex-skills", "zephyr", "SKILL.md"),
 		filepath.Join(root, "codex-skills", "zephyr", "scripts", "dispatch.sh"),
 		filepath.Join(root, "claude-skills", "zephyr", "SKILL.md"),
+		filepath.Join(root, "opencode-skills", "zephyr", "SKILL.md"),
+		filepath.Join(root, "opencode-skills", "zephyr", "scripts", "dispatch.sh"),
+		filepath.Join(root, "opencode-agents", "zephyr-code-reviewer.md"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("installed file %s: %v", path, err)
@@ -51,6 +57,58 @@ func TestInstallRejectsDifferentFileBeforeWriting(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "codex-agents")); !os.IsNotExist(err) {
 		t.Fatalf("preflight wrote agent directory: %v", err)
+	}
+}
+
+func TestUninstallOpenCode(t *testing.T) {
+	root := resolvedTempDir(t)
+	options := Options{
+		Surface:           SurfaceOpenCode,
+		OpenCodeSkillsDir: filepath.Join(root, "opencode-skills"),
+		OpenCodeAgentsDir: filepath.Join(root, "opencode-agents"),
+	}
+	if _, err := Install(options); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Uninstall(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) == 0 {
+		t.Fatal("uninstall removed no files")
+	}
+	for _, path := range []string{
+		filepath.Join(root, "opencode-skills", "zephyr", "SKILL.md"),
+		filepath.Join(root, "opencode-agents", "zephyr-code-reviewer.md"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("uninstalled file still exists %s: %v", path, err)
+		}
+	}
+}
+
+func TestOpenCodeAgentDefinition(t *testing.T) {
+	root := resolvedTempDir(t)
+	options := Options{
+		Surface:           SurfaceOpenCode,
+		OpenCodeSkillsDir: filepath.Join(root, "opencode-skills"),
+		OpenCodeAgentsDir: filepath.Join(root, "opencode-agents"),
+	}
+	if _, err := Install(options); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(root, "opencode-agents", "zephyr-code-reviewer.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{
+		"mode: subagent",
+		"permission:\n  '*': deny",
+		"# Role: code-reviewer",
+	} {
+		if !strings.Contains(string(content), expected) {
+			t.Fatalf("OpenCode agent definition is missing %q", expected)
+		}
 	}
 }
 
