@@ -18,7 +18,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Version != CurrentVersion || cfg.Profile != ProfileStandard || cfg.Language != "auto" {
 		t.Fatalf("unexpected defaults: version=%d profile=%q language=%q", cfg.Version, cfg.Profile, cfg.Language)
 	}
-	wantLimits := Limits{MaxParallelReviewers: 4, MaxRolesStandard: 15, MaxRolesThorough: 15, MaxFinalFindings: 8}
+	wantLimits := Limits{MaxParallelReviewers: 4, MaxRolesStandard: 15, MaxRolesThorough: 15, MaxFinalFindings: 10}
 	if cfg.Limits != wantLimits {
 		t.Fatalf("limits = %+v, want %+v", cfg.Limits, wantLimits)
 	}
