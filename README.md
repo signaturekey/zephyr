@@ -50,8 +50,6 @@ Zephyr подходит для четырёх основных сценарие�
 - сверить реализацию с планом и доступными требованиями;
 - проверить ветку относительно базовой ветки.
 
-[Наверх](#navigation)
-
 <a id="difference"></a>
 ## Чем он отличается от обычного AI-review
 
@@ -78,8 +76,6 @@ Zephyr состоит из двух частей:
 1. Результат всегда относится к конкретному snapshot.
 2. Ноль находок не скрывает неполное покрытие.
 3. P0/P1 нельзя получить без полного evidence bundle.
-
-[Наверх](#navigation)
 
 <a id="quick-start"></a>
 ## Быстрый старт
@@ -142,8 +138,6 @@ $zephyr Проверь текущую ветку относительно main.
 - coverage limits и упавшие роли;
 - пути к `review.md` и `review.json`.
 
-[Наверх](#navigation)
-
 <a id="workflow"></a>
 ## Как проходит ревью
 
@@ -164,8 +158,6 @@ $zephyr Проверь текущую ветку относительно main.
 Если одна роль падает, результаты остальных сохраняются. Если evidence-gate не
 завершился, run получает статус `incomplete`, а candidates не выдаются за
 подтверждённые findings.
-
-[Наверх](#navigation)
 
 <a id="modes"></a>
 ## Режимы и Git scope
@@ -214,8 +206,6 @@ Generated, vendor и binary changes сохраняются в metadata, но и�
 `--include-untracked` и проходит ограничение размера, path filtering и secret
 filtering.
 
-[Наверх](#navigation)
-
 <a id="roles"></a>
 ## Роли ревьюеров
 
@@ -243,8 +233,6 @@ Routing выбирает все релевантные роли в предел�
 
 `evidence-gate` не считается reviewer-ролью и запускается один раз после
 precheck всех candidates.
-
-[Наверх](#navigation)
 
 <a id="result"></a>
 ## Результат
@@ -300,8 +288,6 @@ ${XDG_CACHE_HOME:-$HOME/.cache}/zephyr/runs/<run-id>/
 Run artifacts могут содержать diff и рабочий контекст. Не публикуйте весь
 каталог без отдельной проверки.
 
-[Наверх](#navigation)
-
 <a id="external-context"></a>
 ## Внешний контекст
 
@@ -327,8 +313,6 @@ Harness может до начала routing сохранить необходи
 
 Недоступный обязательный источник становится coverage limit. Zephyr не заявляет
 alignment с требованиями, которых не было в frozen packet.
-
-[Наверх](#navigation)
 
 <a id="configuration"></a>
 ## Конфигурация
@@ -370,8 +354,6 @@ redaction:
 Списки routing и path policies дополняют defaults. Scalar values и отдельные
 limits переопределяют их.
 
-[Наверх](#navigation)
-
 <a id="safety"></a>
 ## Гарантии read-only
 
@@ -393,8 +375,6 @@ allowlist. Перед worktree-aware операциями Zephyr проверя�
 Reviewer получает только role prompt, immutable packet и output schema. Ему
 недоступны live filesystem, Git, shell, MCP, web, memory и другие reviewers.
 
-[Наверх](#navigation)
-
 <a id="limitations"></a>
 ## Ограничения
 
@@ -407,8 +387,6 @@ Reviewer получает только role prompt, immutable packet и output s
 - Static harness tests не доказывают реальный MCP discovery и model dispatch.
 - Zephyr не запускает build и tests проверяемого проекта.
 - Отсутствие findings не доказывает корректность, особенно при coverage limits.
-
-[Наверх](#navigation)
 
 <a id="manual-cli"></a>
 ## Ручной CLI-протокол
@@ -456,8 +434,6 @@ zephyr --help
 zephyr <command> --help
 ```
 
-[Наверх](#navigation)
-
 <a id="maintenance"></a>
 ## Обновление и удаление
 
@@ -482,8 +458,6 @@ Installer и updater не перезаписывают отличающиеся 
 проверки. После установки, обновления или удаления skill откройте новую сессию
 выбранного harness.
 
-[Наверх](#navigation)
-
 <a id="troubleshooting"></a>
 ## Решение проблем
 
@@ -497,8 +471,6 @@ Installer и updater не перезаписывают отличающиеся 
 | Reviewer завершился ошибкой | Проверьте coverage limits и безопасный fingerprint ошибки в `trace.json` |
 | Evidence-gate завершился ошибкой | Run остаётся `incomplete`; candidates не являются findings |
 | P3 нет в Markdown | Используйте `render --include-p3`; полный результат остаётся в `review.json` |
-
-[Наверх](#navigation)
 
 <a id="development"></a>
 ## Разработка
@@ -531,5 +503,3 @@ make validate-harnesses
 
 Полные продуктовые, архитектурные и protocol-инварианты находятся в
 [AGENTS.md](AGENTS.md).
-
-[Наверх](#navigation)
