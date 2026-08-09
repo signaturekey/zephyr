@@ -14,6 +14,7 @@ Zephyr работает через Codex, Claude Code или OpenCode, не вы
 - [Что решает Zephyr](#overview)
 - [Чем он отличается от обычного AI-review](#difference)
 - [Быстрый старт](#quick-start)
+- [Обновление и удаление](#maintenance)
 - [Как проходит ревью](#workflow)
 - [Режимы и Git scope](#modes)
 - [Роли ревьюеров](#roles)
@@ -23,7 +24,6 @@ Zephyr работает через Codex, Claude Code или OpenCode, не вы
 - [Гарантии read-only](#safety)
 - [Ограничения](#limitations)
 - [Ручной CLI-протокол](#manual-cli)
-- [Обновление и удаление](#maintenance)
 - [Решение проблем](#troubleshooting)
 - [Разработка](#development)
 
@@ -111,6 +111,30 @@ make install-all
 zephyr version
 zephyr --help
 ```
+
+<a id="maintenance"></a>
+## Обновление и удаление
+
+Обновить CLI и нужный harness:
+
+```bash
+make update-codex
+make update-claude
+make update-opencode
+make update-all
+```
+
+Удалить Zephyr:
+
+```bash
+make uninstall        # CLI и все harness-пакеты
+make uninstall-skill  # только skills и reviewer definitions
+make uninstall-cli    # только binary
+```
+
+Installer и updater не перезаписывают отличающиеся пользовательские файлы без
+проверки. После установки, обновления или удаления skill откройте новую сессию
+выбранного harness.
 
 ### Первое ревью
 
@@ -433,30 +457,6 @@ zephyr inspect --run RUN_ID
 zephyr --help
 zephyr <command> --help
 ```
-
-<a id="maintenance"></a>
-## Обновление и удаление
-
-Обновить CLI и нужный harness:
-
-```bash
-make update-codex
-make update-claude
-make update-opencode
-make update-all
-```
-
-Удалить Zephyr:
-
-```bash
-make uninstall        # CLI и все harness-пакеты
-make uninstall-skill  # только skills и reviewer definitions
-make uninstall-cli    # только binary
-```
-
-Installer и updater не перезаписывают отличающиеся пользовательские файлы без
-проверки. После установки, обновления или удаления skill откройте новую сессию
-выбранного harness.
 
 <a id="troubleshooting"></a>
 ## Решение проблем
