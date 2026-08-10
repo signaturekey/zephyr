@@ -4,7 +4,7 @@ profile: standard
 language: auto
 
 limits:
-  max_parallel_reviewers: 4
+  max_parallel_reviewers: 8
   max_roles_standard: 15
   max_roles_thorough: 15
   max_final_findings: 10

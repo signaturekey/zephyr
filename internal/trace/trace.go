@@ -72,6 +72,23 @@ func (t *Trace) Start(stage string, now time.Time, metadata map[string]string) i
 	return len(t.Events) - 1
 }
 
+func (t *Trace) Started(stage string) (int, error) {
+	index := -1
+	for i := range t.Events {
+		if t.Events[i].Stage != stage || t.Events[i].Status != StatusStarted {
+			continue
+		}
+		if index >= 0 {
+			return -1, fmt.Errorf("multiple started trace events for stage %q", stage)
+		}
+		index = i
+	}
+	if index < 0 {
+		return -1, fmt.Errorf("no started trace event for stage %q", stage)
+	}
+	return index, nil
+}
+
 func (t *Trace) Finish(index int, status Status, now time.Time, safeError string) error {
 	if index < 0 || index >= len(t.Events) {
 		return fmt.Errorf("trace event index %d out of range", index)

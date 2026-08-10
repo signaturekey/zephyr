@@ -11,10 +11,13 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/signaturekey/zephyr/internal/config"
 	"github.com/signaturekey/zephyr/internal/contextpack"
 	"github.com/signaturekey/zephyr/internal/gitcontext"
+	"github.com/signaturekey/zephyr/internal/routing"
 	"github.com/signaturekey/zephyr/internal/run"
 	"github.com/signaturekey/zephyr/internal/schema"
+	"github.com/signaturekey/zephyr/internal/trace"
 	"github.com/signaturekey/zephyr/internal/workflow"
 )
 
@@ -329,6 +332,14 @@ func TestAllReviewerFailuresMakeRunIncomplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	finalized, err := service.FallbackRouting(ctx, workflow.FinalizeRoutingOptions{
+		RunID: initialized.RunID, Reason: "workflow fixture uses deterministic fallback",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	routed.Routing = finalized.Routing
+	routed.RoutingPath = finalized.RoutingPath
 	if _, err := service.AddCoverage(ctx, workflow.CoverageAddOptions{
 		RunID: initialized.RunID, Source: "late", Reason: "must not alter a frozen packet",
 	}); err == nil {
@@ -779,6 +790,197 @@ func TestParallelCandidateValidationPreservesEveryRole(t *testing.T) {
 	}
 }
 
+func TestSemanticRoutingRemovesContextOnlyFalsePositivesBeforeReview(t *testing.T) {
+	repository := newRepository(t)
+	planPath := filepath.Join(repository, "REVIEW_SPEC.md")
+	writeFile(t, planPath, "# Plan\n\nUpdate the policy contract and skill authoring workflow.\n")
+	service, err := workflow.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	initialized, err := service.Init(ctx, workflow.InitOptions{
+		Repository: repository, Mode: run.ModePlan, Source: run.SourcePlanOnly, PlanPath: planPath,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Collect(ctx, workflow.CollectOptions{RunID: initialized.RunID}); err != nil {
+		t.Fatal(err)
+	}
+	for _, capability := range []workflow.CapabilitySetOptions{
+		{RunID: initialized.RunID, Source: workflow.CapabilityJira, Status: workflow.CapabilityNotRequired, Reason: "no Jira reference"},
+		{RunID: initialized.RunID, Source: workflow.CapabilityConfluence, Status: workflow.CapabilityNotRequired, Reason: "no Confluence reference"},
+		{RunID: initialized.RunID, Source: workflow.CapabilityBitbucket, Status: workflow.CapabilityAvailable},
+	} {
+		if _, err := service.SetCapability(ctx, capability); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := service.AddContext(ctx, workflow.ContextAddOptions{
+		RunID: initialized.RunID, Source: "bitbucket", Key: "master",
+		Content: []byte("Repository inventory: platform/techstack/react and a migration instruction."),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	routed, err := service.Route(ctx, workflow.RouteOptions{RunID: initialized.RunID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if routed.RoutingPath != "" {
+		t.Fatal("routing unexpectedly finalized before semantic decision")
+	}
+	startedTrace := semanticTraceEvent(t, initialized.RunDir)
+	if startedTrace.Status != trace.StatusStarted || startedTrace.FinishedAt != nil {
+		t.Fatalf("semantic routing trace did not start before model dispatch: %#v", startedTrace)
+	}
+	if _, err := service.ValidateCandidates(ctx, workflow.ValidateCandidatesOptions{
+		RunID: initialized.RunID, Role: "architect-reviewer",
+		Input: marshalJSON(t, schema.CandidateEnvelope{Version: 1, RunID: initialized.RunID, Role: "architect-reviewer", Findings: []schema.CandidateFinding{}}),
+	}); err == nil || !strings.Contains(err.Error(), "stage \"route\" is \"running\"") {
+		t.Fatalf("review unexpectedly started before semantic routing: %v", err)
+	}
+	proposal := schema.SemanticRoutingEnvelope{Version: routing.SemanticRoutingVersion, RunID: initialized.RunID, Decisions: []schema.SemanticRoutingDecision{}}
+	for _, candidate := range routed.RoutingRequest.Candidates {
+		decision := "exclude"
+		if candidate.Role == "contract-reviewer" || candidate.Role == "skill-authoring-expert" {
+			decision = "include"
+		}
+		proposal.Decisions = append(proposal.Decisions, schema.SemanticRoutingDecision{
+			Role: candidate.Role, Decision: decision, EvidenceRefs: []string{"scope"}, Reason: "fixture scope classification", Confidence: 0.9,
+		})
+	}
+	finalized, err := service.ValidateRouting(ctx, workflow.ValidateRoutingOptions{RunID: initialized.RunID, Input: marshalJSON(t, proposal)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finalized.Routing.Degraded || decisionPresent(finalized.Routing.Selected, "frontend-expert") || decisionPresent(finalized.Routing.Selected, "sql-expert") {
+		t.Fatalf("context-only false positives survived semantic routing: %#v", finalized.Routing)
+	}
+	for _, role := range []string{"architect-reviewer", "contract-reviewer", "skill-authoring-expert"} {
+		if !decisionPresent(finalized.Routing.Selected, role) {
+			t.Fatalf("expected role %q missing", role)
+		}
+	}
+	finishedTrace := semanticTraceEvent(t, initialized.RunDir)
+	if finishedTrace.Status != trace.StatusCompleted || finishedTrace.Metadata["validation_status"] != "accepted" ||
+		finishedTrace.Metadata["fallback"] != "false" || finishedTrace.Metadata["selected_roles"] != "3" {
+		t.Fatalf("semantic routing trace lacks final lifecycle metadata: %#v", finishedTrace)
+	}
+}
+
+func TestInvalidSemanticRoutingUsesConservativeFallback(t *testing.T) {
+	repository := newRepository(t)
+	planPath := filepath.Join(repository, "REVIEW_SPEC.md")
+	writeFile(t, planPath, "# Plan\n\nReview the change.\n")
+	service, err := workflow.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	initialized, err := service.Init(ctx, workflow.InitOptions{Repository: repository, Mode: run.ModePlan, Source: run.SourcePlanOnly, PlanPath: planPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Collect(ctx, workflow.CollectOptions{RunID: initialized.RunID}); err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []workflow.CapabilitySource{workflow.CapabilityJira, workflow.CapabilityConfluence, workflow.CapabilityBitbucket} {
+		if _, err := service.SetCapability(ctx, workflow.CapabilitySetOptions{RunID: initialized.RunID, Source: source, Status: workflow.CapabilityNotRequired, Reason: "fixture"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := service.Route(ctx, workflow.RouteOptions{RunID: initialized.RunID}); err != nil {
+		t.Fatal(err)
+	}
+	finalized, err := service.ValidateRouting(ctx, workflow.ValidateRoutingOptions{RunID: initialized.RunID, Input: []byte(`{"invalid":true}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !finalized.Routing.Degraded || finalized.Routing.Resolution != "deterministic-fallback" || len(finalized.Routing.Selected) != len(config.KnownRoles()) {
+		t.Fatalf("invalid semantic output did not preserve coverage: %#v", finalized.Routing)
+	}
+	fallbackTrace := semanticTraceEvent(t, initialized.RunDir)
+	if fallbackTrace.Status != trace.StatusPartial || fallbackTrace.Metadata["validation_status"] != "invalid" ||
+		fallbackTrace.Metadata["fallback_category"] != "invalid-output" || fallbackTrace.Metadata["selected_roles"] != "15" {
+		t.Fatalf("semantic fallback trace lacks final lifecycle metadata: %#v", fallbackTrace)
+	}
+}
+
+func TestSemanticRoutingTimeoutUsesConservativeFallbackBeforeReview(t *testing.T) {
+	repository := newRepository(t)
+	planPath := filepath.Join(repository, "REVIEW_SPEC.md")
+	writeFile(t, planPath, "# Plan\n\nReview the change.\n")
+	service, err := workflow.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	initialized, err := service.Init(ctx, workflow.InitOptions{Repository: repository, Mode: run.ModePlan, Source: run.SourcePlanOnly, PlanPath: planPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Collect(ctx, workflow.CollectOptions{RunID: initialized.RunID}); err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []workflow.CapabilitySource{workflow.CapabilityJira, workflow.CapabilityConfluence, workflow.CapabilityBitbucket} {
+		if _, err := service.SetCapability(ctx, workflow.CapabilitySetOptions{RunID: initialized.RunID, Source: source, Status: workflow.CapabilityNotRequired, Reason: "fixture"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	routed, err := service.Route(ctx, workflow.RouteOptions{RunID: initialized.RunID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ValidateCandidates(ctx, workflow.ValidateCandidatesOptions{
+		RunID: initialized.RunID, Role: config.RoleArchitectReviewer,
+		Input: marshalJSON(t, schema.CandidateEnvelope{Version: 1, RunID: initialized.RunID, Role: config.RoleArchitectReviewer, Findings: []schema.CandidateFinding{}}),
+	}); err == nil {
+		t.Fatal("reviewer started before semantic timeout fallback completed")
+	}
+	finalized, err := service.FallbackRouting(ctx, workflow.FinalizeRoutingOptions{RunID: initialized.RunID, Reason: "semantic router timeout"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !finalized.Routing.Degraded || len(finalized.Routing.Selected) != len(config.KnownRoles()) || routed.RoutingPath != "" {
+		t.Fatalf("timeout fallback did not preserve coverage: %#v", finalized.Routing)
+	}
+	fallbackTrace := semanticTraceEvent(t, initialized.RunDir)
+	if fallbackTrace.Status != trace.StatusPartial || fallbackTrace.Metadata["fallback_category"] != "timeout" ||
+		fallbackTrace.Metadata["selected_roles"] != "15" {
+		t.Fatalf("timeout fallback trace is incomplete: %#v", fallbackTrace)
+	}
+}
+
+func semanticTraceEvent(t *testing.T, runDir string) trace.Event {
+	t.Helper()
+	var value trace.Trace
+	readJSONFile(t, filepath.Join(runDir, "trace.json"), &value)
+	var found *trace.Event
+	for i := range value.Events {
+		if value.Events[i].Stage != "semantic-routing" {
+			continue
+		}
+		if found != nil {
+			t.Fatal("multiple semantic-routing trace events")
+		}
+		found = &value.Events[i]
+	}
+	if found == nil {
+		t.Fatal("semantic-routing trace event is missing")
+	}
+	return *found
+}
+
+func decisionPresent(decisions []routing.Decision, role string) bool {
+	for _, decision := range decisions {
+		if decision.Role == role {
+			return true
+		}
+	}
+	return false
+}
+
 func TestTrackedCredentialAssignmentsAreRedactedFromPacket(t *testing.T) {
 	repository := newRepository(t)
 	const (
@@ -860,7 +1062,22 @@ func routeWithNoExternalContext(
 			t.Fatalf("record %s capability: %v", source, err)
 		}
 	}
-	return service.Route(ctx, workflow.RouteOptions{RunID: runID})
+	routed, err := service.Route(ctx, workflow.RouteOptions{RunID: runID})
+	if err != nil {
+		return workflow.RouteResult{}, err
+	}
+	if routed.RoutingPath != "" {
+		return routed, nil
+	}
+	finalized, err := service.FallbackRouting(ctx, workflow.FinalizeRoutingOptions{
+		RunID: runID, Reason: "workflow fixture uses deterministic fallback",
+	})
+	if err != nil {
+		return workflow.RouteResult{}, err
+	}
+	routed.Routing = finalized.Routing
+	routed.RoutingPath = finalized.RoutingPath
+	return routed, nil
 }
 
 func gitRun(t *testing.T, repository string, args ...string) {

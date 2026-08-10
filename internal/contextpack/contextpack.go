@@ -78,22 +78,23 @@ type SourceManifest struct {
 }
 
 type Packet struct {
-	Version             int                `json:"version"`
-	RunID               string             `json:"run_id"`
-	Mode                string             `json:"mode"`
-	Source              string             `json:"source"`
-	Repository          Repository         `json:"repository"`
-	GitMetadata         json.RawMessage    `json:"git_metadata,omitempty"`
-	ChangedFiles        []string           `json:"changed_files"`
-	Technologies        []string           `json:"technologies"`
-	Diff                Diff               `json:"diff"`
-	Plan                *Document          `json:"plan,omitempty"`
-	BusinessContext     []BusinessSnapshot `json:"business_context"`
-	ProjectInstructions []Document         `json:"project_instructions"`
-	Sources             SourceManifest     `json:"sources"`
-	RoutingSignals      []string           `json:"routing_signals"`
-	CoverageLimits      []string           `json:"coverage_limits"`
-	Restrictions        []string           `json:"restrictions"`
+	Version              int                `json:"version"`
+	RunID                string             `json:"run_id"`
+	Mode                 string             `json:"mode"`
+	Source               string             `json:"source"`
+	Repository           Repository         `json:"repository"`
+	GitMetadata          json.RawMessage    `json:"git_metadata,omitempty"`
+	ChangedFiles         []string           `json:"changed_files"`
+	Technologies         []string           `json:"technologies"`
+	Diff                 Diff               `json:"diff"`
+	Plan                 *Document          `json:"plan,omitempty"`
+	BusinessContext      []BusinessSnapshot `json:"business_context"`
+	ProjectInstructions  []Document         `json:"project_instructions"`
+	Sources              SourceManifest     `json:"sources"`
+	RoutingSignals       []string           `json:"routing_signals"`
+	StrongRoutingSignals []string           `json:"strong_routing_signals"`
+	CoverageLimits       []string           `json:"coverage_limits"`
+	Restrictions         []string           `json:"restrictions"`
 }
 
 type Truncation struct {
@@ -153,17 +154,18 @@ func Build(opts Options) (Result, error) {
 	reviewRepository := sanitizeRepository(opts.Repository, opts.Redaction)
 	reviewRepository.Root = "reviewed-repository"
 	packet := Packet{
-		Version:             Version,
-		RunID:               opts.RunID,
-		Mode:                opts.Mode,
-		Source:              opts.Source,
-		Repository:          reviewRepository,
-		ChangedFiles:        uniqueSorted(opts.Redaction.Strings(opts.ChangedFiles)),
-		Technologies:        []string{},
-		BusinessContext:     []BusinessSnapshot{},
-		ProjectInstructions: []Document{},
-		RoutingSignals:      []string{},
-		CoverageLimits:      []string{},
+		Version:              Version,
+		RunID:                opts.RunID,
+		Mode:                 opts.Mode,
+		Source:               opts.Source,
+		Repository:           reviewRepository,
+		ChangedFiles:         uniqueSorted(opts.Redaction.Strings(opts.ChangedFiles)),
+		Technologies:         []string{},
+		BusinessContext:      []BusinessSnapshot{},
+		ProjectInstructions:  []Document{},
+		RoutingSignals:       []string{},
+		StrongRoutingSignals: []string{},
+		CoverageLimits:       []string{},
 		Sources: SourceManifest{
 			Included:    []string{},
 			Excluded:    append([]CoverageLimit{}, opts.ExcludedSources...),
@@ -264,6 +266,7 @@ func Build(opts Options) (Result, error) {
 	}
 	sort.Slice(truncations, func(i, j int) bool { return truncations[i].Path < truncations[j].Path })
 	packet.RoutingSignals = detectRoutingSignals(packet)
+	packet.StrongRoutingSignals = detectStrongRoutingSignals(packet)
 	packet.CoverageLimits = coverageLimitStrings(packet.Sources, truncations)
 
 	return Result{Packet: packet, Truncations: truncations}, nil
@@ -810,6 +813,18 @@ func detectRoutingSignals(packet Packet) []string {
 		signals = append(signals, "large-complexity-delta")
 	}
 	return uniqueSorted(signals)
+}
+
+// detectStrongRoutingSignals limits deterministic protection to signals derived
+// from the changed paths or diff. Plan and business-context prose remains input
+// to semantic routing and cannot protect a role merely because it contains a
+// matching word.
+func detectStrongRoutingSignals(packet Packet) []string {
+	strong := packet
+	strong.Mode = ""
+	strong.Plan = nil
+	strong.BusinessContext = nil
+	return detectRoutingSignals(strong)
 }
 
 func routingCorpus(packet Packet, maximum int) string {

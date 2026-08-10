@@ -7,6 +7,7 @@ usage() {
   cat >&2 <<'EOF'
 usage:
   dispatch.sh probe --output FILE
+  dispatch.sh routing --packet FILE --request FILE --compat FILE --output FILE
   dispatch.sh reviewer --role ROLE --packet FILE --compat FILE --output FILE [--format-retry]
   dispatch.sh evidence --prechecked FILE --evidence FILE --compat FILE --output FILE
 
@@ -24,6 +25,7 @@ kind=$1
 shift
 role=
 packet=
+request=
 prechecked=
 evidence=
 compat=
@@ -40,6 +42,11 @@ while [ "$#" -gt 0 ]; do
     --packet)
       [ "$#" -ge 2 ] || { usage; exit 2; }
       packet=$2
+      shift 2
+      ;;
+    --request)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      request=$2
       shift 2
       ;;
     --prechecked)
@@ -138,7 +145,18 @@ verify_asset() {
 
 case "$kind" in
   probe)
-    [ -z "$role" ] && [ -z "$packet" ] && [ -z "$prechecked" ] && [ -z "$evidence" ] && [ -z "$compat" ] && [ "$format_retry" = no ] || { usage; exit 2; }
+    [ -z "$role" ] && [ -z "$packet" ] && [ -z "$request" ] && [ -z "$prechecked" ] && [ -z "$evidence" ] && [ -z "$compat" ] && [ "$format_retry" = no ] || { usage; exit 2; }
+    ;;
+  routing)
+    [ -z "$role" ] && [ -n "$packet" ] && [ -n "$request" ] && [ -z "$prechecked" ] && [ -z "$evidence" ] && [ -n "$compat" ] && [ "$format_retry" = no ] || { usage; exit 2; }
+    role=semantic-router
+    role_path=$asset_root/roles/semantic-router.md
+    schema_path=$asset_root/schemas/semantic-routing.codex.schema.json
+    verify_asset "$role_path" roles/semantic-router.md
+    verify_asset "$schema_path" schemas/semantic-routing.codex.schema.json
+    require_regular_absolute "$packet" packet
+    require_regular_absolute "$request" request
+    effort=high
     ;;
   reviewer)
     case "$role" in
@@ -148,7 +166,7 @@ case "$kind" in
         exit 2
         ;;
     esac
-    [ -n "$packet" ] && [ -n "$compat" ] && [ -z "$prechecked" ] && [ -z "$evidence" ] || { usage; exit 2; }
+    [ -n "$packet" ] && [ -z "$request" ] && [ -n "$compat" ] && [ -z "$prechecked" ] && [ -z "$evidence" ] || { usage; exit 2; }
     protocol_path=$asset_root/roles/reviewer-protocol.md
     role_path=$asset_root/roles/$role.md
     schema_path=$asset_root/schemas/candidate-findings.codex.schema.json
@@ -159,7 +177,7 @@ case "$kind" in
     effort=high
     ;;
   evidence)
-    [ -z "$role" ] && [ -z "$packet" ] && [ -n "$prechecked" ] && [ -n "$evidence" ] && [ -n "$compat" ] && [ "$format_retry" = no ] || { usage; exit 2; }
+    [ -z "$role" ] && [ -z "$packet" ] && [ -z "$request" ] && [ -n "$prechecked" ] && [ -n "$evidence" ] && [ -n "$compat" ] && [ "$format_retry" = no ] || { usage; exit 2; }
     role=evidence-gate
     role_path=$asset_root/roles/evidence-gate.md
     schema_path=$asset_root/schemas/evidence-verdict.codex.schema.json
@@ -252,6 +270,18 @@ if [ "$probe_timeout" -lt 1 ] || [ "$probe_timeout" -gt 600 ]; then
   exit 1
 fi
 
+dispatch_timeout=${ZEPHYR_CODEX_DISPATCH_TIMEOUT:-900}
+case "$dispatch_timeout" in
+  ''|*[!0-9]*)
+    echo "zephyr codex dispatch: ZEPHYR_CODEX_DISPATCH_TIMEOUT must be an integer" >&2
+    exit 1
+    ;;
+esac
+if [ "$dispatch_timeout" -lt 1 ] || [ "$dispatch_timeout" -gt 3600 ]; then
+  echo "zephyr codex dispatch: ZEPHYR_CODEX_DISPATCH_TIMEOUT must be between 1 and 3600" >&2
+  exit 1
+fi
+
 classify_codex_failure() {
   classified_stderr=$1
   if LC_ALL=C grep -E -i -q -- '(^|[^0-9])(401|403)([^0-9]|$)|unauthori[sz]ed|authentication|not logged in|login required' "$classified_stderr"; then
@@ -283,7 +313,7 @@ classify_codex_failure() {
 
 retryable_failure() {
   case "$1" in
-    rate-limit|provider-unavailable|transport|unknown) return 0 ;;
+    rate-limit|provider-unavailable|transport|timeout|unknown) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -292,9 +322,12 @@ run_with_timeout() {
   timeout_limit=$1
   command_stdout=$2
   command_stderr=$3
-  shift 3
+  command_stdin=$4
+  shift 4
   timeout_marker=$work_dir/timeout-marker-$$
+  watchdog_sleep_file=$work_dir/watchdog-sleep-$$
   rm -f -- "$timeout_marker"
+  rm -f -- "$watchdog_sleep_file"
 
   # A timeout must stop Codex and every process it starts. A background POSIX
   # shell job normally shares the dispatcher's process group, so signal a new
@@ -320,11 +353,14 @@ run_with_timeout() {
   (
     HOME="$isolated_codex_home" CODEX_HOME="$isolated_codex_home"
     export HOME CODEX_HOME
-    start_in_isolated_session "$@"
+    start_in_isolated_session "$@" < "$command_stdin"
   ) > "$command_stdout" 2> "$command_stderr" &
   command_pid=$!
   (
-    sleep "$timeout_limit"
+    sleep "$timeout_limit" &
+    watchdog_sleep_pid=$!
+    printf '%s\n' "$watchdog_sleep_pid" > "$watchdog_sleep_file"
+    wait "$watchdog_sleep_pid"
     if kill -0 "$command_pid" 2>/dev/null; then
       : > "$timeout_marker"
       terminate_process_group TERM "$command_pid"
@@ -333,15 +369,21 @@ run_with_timeout() {
         terminate_process_group KILL "$command_pid"
       fi
     fi
-  ) &
+  ) >/dev/null 2>&1 &
   watchdog_pid=$!
+  while [ ! -s "$watchdog_sleep_file" ] && kill -0 "$watchdog_pid" 2>/dev/null; do :; done
   if wait "$command_pid"; then
     command_status=0
   else
     command_status=$?
   fi
+  if [ -f "$watchdog_sleep_file" ]; then
+    watchdog_sleep_pid=$(sed -n '1p' "$watchdog_sleep_file")
+    kill "$watchdog_sleep_pid" 2>/dev/null || :
+  fi
   kill "$watchdog_pid" 2>/dev/null || :
   wait "$watchdog_pid" 2>/dev/null || :
+  rm -f -- "$watchdog_sleep_file"
   if [ -f "$timeout_marker" ]; then
     rm -f -- "$timeout_marker"
     return 124
@@ -357,7 +399,7 @@ run_probe_command() {
   probe_attempt=1
   probe_first_failure=
   while :; do
-    if run_with_timeout "$probe_timeout" "$probe_stdout" "$probe_stderr" "$@"; then
+    if run_with_timeout "$probe_timeout" "$probe_stdout" "$probe_stderr" /dev/null "$@"; then
       return 0
     else
       probe_status=$?
@@ -613,6 +655,10 @@ while :; do
       if LC_ALL=C grep -F -q -- "$nonce" "$checked"; then collision=yes; fi
     done
     if [ "$format_retry" = yes ] && LC_ALL=C grep -F -q -- "$nonce" "$retry_file"; then collision=yes; fi
+  elif [ "$kind" = routing ]; then
+    for checked in "$role_path" "$packet" "$request" "$schema_path"; do
+      if LC_ALL=C grep -F -q -- "$nonce" "$checked"; then collision=yes; fi
+    done
   else
     for checked in "$role_path" "$prechecked" "$evidence" "$schema_path"; do
       if LC_ALL=C grep -F -q -- "$nonce" "$checked"; then collision=yes; fi
@@ -641,6 +687,11 @@ if [ "$kind" = reviewer ]; then
   if [ "$format_retry" = yes ]; then
     append_block retry-directive "$retry_file"
   fi
+elif [ "$kind" = routing ]; then
+  append_block semantic-router-prompt "$role_path"
+  append_block review-packet "$packet"
+  append_block routing-request "$request"
+  append_block semantic-routing-schema "$schema_path"
 else
   append_block evidence-gate-prompt "$role_path"
   append_block prechecked-candidates "$prechecked"
@@ -669,7 +720,7 @@ invoke_codex() {
     --config 'mcp_servers={}' \
     --config 'apps={ _default = { enabled = false, destructive_enabled = false, open_world_enabled = false } }' \
     --config 'memories={ use_memories = false, generate_memories = false, dedicated_tools = false }' \
-    --config 'developer_instructions="Act only as an isolated Zephyr reviewer. Use only the exact blocks in the user prompt. Never call a tool, open a path, use memory, or modify anything. Return JSON only."' \
+    --config 'developer_instructions="Act only as an isolated Zephyr routing or review process. Use only the exact blocks in the user prompt. Never call a tool, open a path, use memory, or modify anything. Return JSON only."' \
     --config "model_reasoning_effort=\"$effort\""
   while IFS='=' read -r feature state; do
     if list_contains "$isolated_features" "$feature"; then
@@ -677,7 +728,8 @@ invoke_codex() {
     fi
   done < "$compatibility_features"
   set -- "$@" -
-  HOME="$isolated_codex_home" CODEX_HOME="$isolated_codex_home" "$@" < "$prompt_file" > "$events_file" 2> "$stderr_file"
+  run_with_timeout "$dispatch_timeout" "$events_file" "$stderr_file" "$prompt_file" \
+    env HOME="$isolated_codex_home" CODEX_HOME="$isolated_codex_home" "$@"
 }
 
 attempt=1
@@ -695,7 +747,11 @@ while :; do
     break
   fi
 
-  failure_category=$(classify_codex_failure "$stderr_file")
+  if [ "$codex_status" -eq 124 ]; then
+    failure_category=timeout
+  else
+    failure_category=$(classify_codex_failure "$stderr_file")
+  fi
   failure_hash=$(hash_file "$stderr_file")
   failure_bytes=$(wc -c < "$stderr_file" | tr -d ' ')
   failure_diagnostic="category=$failure_category status=$codex_status stderr_sha256=$failure_hash stderr_bytes=$failure_bytes"

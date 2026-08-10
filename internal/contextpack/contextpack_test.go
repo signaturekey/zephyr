@@ -108,6 +108,11 @@ func TestPlanContentProducesBoundedSemanticRoutingSignals(t *testing.T) {
 			t.Fatalf("signal %q missing from %v", expected, result.Packet.RoutingSignals)
 		}
 	}
+	for _, weak := range []string{"contract", "security", "sql", "tests"} {
+		if containsString(result.Packet.StrongRoutingSignals, weak) {
+			t.Fatalf("plan-only signal %q was incorrectly protected: %v", weak, result.Packet.StrongRoutingSignals)
+		}
+	}
 }
 
 func TestFrontendAndSkillPathsProduceTechnologyAndRoutingSignals(t *testing.T) {
@@ -127,6 +132,11 @@ func TestFrontendAndSkillPathsProduceTechnologyAndRoutingSignals(t *testing.T) {
 	for _, expected := range []string{"frontend", "observable-behavior", "skill-authoring", "typescript"} {
 		if signals := detectRoutingSignals(packet); !containsString(signals, expected) {
 			t.Fatalf("signal %q missing from %v", expected, signals)
+		}
+	}
+	for _, expected := range []string{"frontend", "skill-authoring", "typescript"} {
+		if signals := detectStrongRoutingSignals(packet); !containsString(signals, expected) {
+			t.Fatalf("strong path signal %q missing from %v", expected, signals)
 		}
 	}
 }

@@ -33,6 +33,7 @@ REVIEWERS = (
     "code-simplifier",
 )
 ALL_ROLES = REVIEWERS + ("evidence-gate",)
+MODEL_PROCESSES = ALL_ROLES + ("semantic-router",)
 
 
 def fail(message: str) -> None:
@@ -65,7 +66,7 @@ def frontmatter(path: Path) -> tuple[dict[str, str], str]:
 
 
 def validate_roles() -> None:
-    expected = {f"{name}.md" for name in ALL_ROLES} | {"reviewer-protocol.md"}
+    expected = {f"{name}.md" for name in MODEL_PROCESSES} | {"reviewer-protocol.md"}
     actual = {path.name for path in (ROOT / "roles").glob("*.md")}
     if actual != expected:
         fail(f"roles mismatch: expected {sorted(expected)}, got {sorted(actual)}")
@@ -168,6 +169,8 @@ def validate_skills() -> None:
         "zephyr init",
         "zephyr collect",
         "zephyr route",
+        "zephyr validate-routing",
+        "zephyr fallback-routing",
         "zephyr validate-candidates",
         "validate-verdicts",
         "zephyr aggregate",
@@ -188,6 +191,8 @@ def validate_skills() -> None:
         "zephyr context capability",
         "zephyr context limit",
         "zephyr route",
+        "zephyr validate-routing",
+        "zephyr fallback-routing",
         "zephyr validate-candidates",
         "zephyr mark-failed",
         "zephyr validate-verdicts",
@@ -244,7 +249,7 @@ def validate_skills() -> None:
 def validate_codex_agents() -> None:
     source_dir = ROOT / "harnesses/codex/agents"
     files = sorted(source_dir.glob("zephyr-*.toml"))
-    if {path.stem.removeprefix("zephyr-") for path in files} != set(ALL_ROLES):
+    if {path.stem.removeprefix("zephyr-") for path in files} != set(MODEL_PROCESSES):
         fail("Codex custom-agent set does not match Zephyr roles")
 
     names: set[str] = set()
@@ -344,7 +349,7 @@ def validate_codex_agents() -> None:
 def validate_claude_agents() -> None:
     source_dir = ROOT / "harnesses/claude-code/agents"
     files = sorted(source_dir.glob("zephyr-*.md"))
-    if {path.stem.removeprefix("zephyr-") for path in files} != set(ALL_ROLES):
+    if {path.stem.removeprefix("zephyr-") for path in files} != set(MODEL_PROCESSES):
         fail("Claude custom-agent set does not match Zephyr roles")
 
     names: set[str] = set()
@@ -400,7 +405,7 @@ def validate_claude_agents() -> None:
 def validate_opencode_agents() -> None:
     source_dir = ROOT / "harnesses/opencode/agents"
     files = sorted(source_dir.glob("zephyr-*.md"))
-    if {path.stem.removeprefix("zephyr-") for path in files} != set(ALL_ROLES):
+    if {path.stem.removeprefix("zephyr-") for path in files} != set(MODEL_PROCESSES):
         fail("OpenCode custom-agent set does not match Zephyr roles")
 
     for path in files:
@@ -441,6 +446,9 @@ def validate_opencode_dispatcher() -> None:
         "stdin",
         "stderr_sha256",
         "attempt=2",
+        "dispatch.sh routing",
+        "semantic-router-prompt",
+        "semantic-routing.schema.json",
     ):
         if phrase not in text:
             fail(f"{dispatcher}: missing isolated transport element {phrase!r}")
@@ -459,6 +467,11 @@ def validate_opencode_dispatcher() -> None:
             'cp "$XDG_CONFIG_HOME/opencode/opencode.json" "$ZEPHYR_OPENCODE_TEST_CAPTURE/config.json"\n'
             'cp "$XDG_CONFIG_HOME/opencode/agents/zephyr-dispatch.md" "$ZEPHYR_OPENCODE_TEST_CAPTURE/agent.md"\n'
             'cat >"$ZEPHYR_OPENCODE_TEST_CAPTURE/prompt"\n'
+            'case "${ZEPHYR_OPENCODE_TEST_MODE:-success}" in\n'
+            '  auth) echo "authentication failed: private diagnostic" >&2; exit 1 ;;\n'
+            '  timeout) trap "" TERM; (trap "" TERM; while :; do sleep 30 & wait "$!"; done) & '
+            'printf "%s\\n" "$!" >>"$ZEPHYR_OPENCODE_TEST_CHILD_PIDS"; wait "$!" ;;\n'
+            'esac\n'
             "printf '%s\\n' '{\"version\":1,\"run_id\":\"smoke\",\"role\":\"code-reviewer\",\"findings\":[]}'\n",
             encoding="utf-8",
         )
@@ -507,6 +520,97 @@ def validate_opencode_dispatcher() -> None:
         agent = (capture / "agent.md").read_text(encoding="utf-8")
         if "mode: primary" not in agent or "'*': deny" not in agent:
             fail("OpenCode dispatcher transport agent is not isolated")
+
+        request = root / "routing-request.json"
+        request_bytes = b'{"version":1,"run_id":"smoke","candidates":[]}'
+        request.write_bytes(request_bytes)
+        routing_output = root / "routing-result.json"
+        routing_run = subprocess.run(
+            [
+                "sh",
+                str(dispatcher),
+                "routing",
+                "--packet",
+                str(packet),
+                "--request",
+                str(request),
+                "--output",
+                str(routing_output),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        if routing_run.returncode != 0:
+            fail(f"OpenCode semantic routing dispatcher smoke failed: {routing_run.stderr.strip()}")
+        routing_prompt = (capture / "prompt").read_bytes()
+        if routing_prompt.count(packet_bytes) != 1 or routing_prompt.count(request_bytes) != 1:
+            fail("OpenCode semantic routing dispatcher did not stream exact packet and request blocks")
+
+        routing_failure_output = root / "routing-process-failure.json"
+        routing_failure_environment = environment.copy()
+        routing_failure_environment["ZEPHYR_OPENCODE_TEST_MODE"] = "auth"
+        routing_failure = subprocess.run(
+            [
+                "sh",
+                str(dispatcher),
+                "routing",
+                "--packet",
+                str(packet),
+                "--request",
+                str(request),
+                "--output",
+                str(routing_failure_output),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=routing_failure_environment,
+        )
+        if routing_failure.returncode == 0 or routing_failure_output.exists() or "category=auth" not in routing_failure.stderr:
+            fail("OpenCode routing process failure was not classified safely")
+
+        routing_timeout_output = root / "routing-timeout.json"
+        routing_timeout_pids = root / "routing-timeout-child.pids"
+        routing_timeout_environment = environment.copy()
+        routing_timeout_environment.update(
+            {
+                "ZEPHYR_OPENCODE_TEST_MODE": "timeout",
+                "ZEPHYR_OPENCODE_TEST_CHILD_PIDS": str(routing_timeout_pids),
+                "ZEPHYR_OPENCODE_DISPATCH_TIMEOUT": "1",
+            }
+        )
+        routing_timeout = subprocess.run(
+            [
+                "sh",
+                str(dispatcher),
+                "routing",
+                "--packet",
+                str(packet),
+                "--request",
+                str(request),
+                "--output",
+                str(routing_timeout_output),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=routing_timeout_environment,
+            timeout=15,
+        )
+        if routing_timeout.returncode == 0 or routing_timeout_output.exists() or "category=timeout" not in routing_timeout.stderr:
+            fail(f"OpenCode routing timeout was not bounded safely: {routing_timeout.stderr!r}")
+        for raw_pid in routing_timeout_pids.read_text(encoding="utf-8").splitlines():
+            child_pid = int(raw_pid)
+            for _ in range(20):
+                try:
+                    os.kill(child_pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.05)
+            else:
+                fail("OpenCode routing timeout left a TERM-ignoring child process running")
 
 
 def validate_installers() -> None:
@@ -618,6 +722,9 @@ def validate_installers() -> None:
         "CODEX_HOME=",
         "stderr_sha256",
         "attempt=2",
+        "dispatch.sh routing",
+        "semantic-router-prompt",
+        "semantic-routing.codex.schema.json",
     ):
         if phrase not in dispatcher_text:
             fail(f"{dispatcher}: missing isolated transport element {phrase!r}")
@@ -985,6 +1092,18 @@ case "${ZEPHYR_FAKE_MODE:-success}" in
     echo "failed to initialize in-process app-server client: Operation not permitted" >&2
     exit 1
     ;;
+  timeout)
+    trap '' TERM
+    (
+      trap '' TERM
+      while :; do
+        sleep 30 &
+        wait "$!"
+      done
+    ) &
+    printf '%s\\n' "$!" >> "$ZEPHYR_FAKE_CHILD_PID"
+    wait "$!"
+    ;;
   *)
     exit 2
     ;;
@@ -1089,6 +1208,106 @@ printf '{}\\n' > "$output"
             )
             if role_result.returncode != 0 or role_output.read_bytes() != b"{}\n":
                 fail(f"Codex dispatcher rejected known reviewer role {reviewer!r}: {role_result.stderr.decode(errors='replace').strip()}")
+
+        request = root / "routing-request.json"
+        request_bytes = b'{"version":1,"run_id":"run-1","candidates":[]}\n'
+        request.write_bytes(request_bytes)
+        routing_output = root / "routing-result.json"
+        routing_result = subprocess.run(
+            [
+                "sh",
+                str(dispatcher),
+                "routing",
+                "--packet",
+                str(packet),
+                "--request",
+                str(request),
+                "--compat",
+                str(compatibility),
+                "--output",
+                str(routing_output),
+            ],
+            check=False,
+            capture_output=True,
+            env=environment,
+        )
+        if routing_result.returncode != 0 or routing_output.read_bytes() != b"{}\n":
+            fail(f"Codex semantic routing dispatcher smoke test failed: {routing_result.stderr.decode(errors='replace').strip()}")
+        routing_prompt = capture.read_bytes()
+        if routing_prompt.count(packet_bytes) != 1 or routing_prompt.count(request_bytes) != 1:
+            fail("Codex semantic routing dispatcher did not stream exact packet and request blocks")
+        routing_argv = arguments.read_text(encoding="utf-8")
+        if "semantic-routing.codex.schema.json" not in routing_argv:
+            fail("Codex semantic routing dispatcher did not enforce the routing output schema")
+
+        routing_failure_output = root / "routing-process-failure.json"
+        routing_failure_environment = environment.copy()
+        routing_failure_environment["ZEPHYR_FAKE_MODE"] = "auth"
+        routing_failure = subprocess.run(
+            [
+                "sh",
+                str(dispatcher),
+                "routing",
+                "--packet",
+                str(packet),
+                "--request",
+                str(request),
+                "--compat",
+                str(compatibility),
+                "--output",
+                str(routing_failure_output),
+            ],
+            check=False,
+            capture_output=True,
+            env=routing_failure_environment,
+        )
+        if routing_failure.returncode == 0 or routing_failure_output.exists():
+            fail("Codex routing dispatcher published output after process failure")
+        if "category=auth" not in routing_failure.stderr.decode(errors="replace"):
+            fail("Codex routing process failure lacks a safe category")
+
+        routing_timeout_output = root / "routing-timeout.json"
+        routing_timeout_pids = root / "routing-timeout-child.pids"
+        routing_timeout_environment = environment.copy()
+        routing_timeout_environment.update(
+            {
+                "ZEPHYR_FAKE_MODE": "timeout",
+                "ZEPHYR_FAKE_CHILD_PID": str(routing_timeout_pids),
+                "ZEPHYR_CODEX_DISPATCH_TIMEOUT": "1",
+            }
+        )
+        routing_timeout = subprocess.run(
+            [
+                "sh",
+                str(dispatcher),
+                "routing",
+                "--packet",
+                str(packet),
+                "--request",
+                str(request),
+                "--compat",
+                str(compatibility),
+                "--output",
+                str(routing_timeout_output),
+            ],
+            check=False,
+            capture_output=True,
+            env=routing_timeout_environment,
+            timeout=15,
+        )
+        routing_timeout_stderr = routing_timeout.stderr.decode(errors="replace")
+        if routing_timeout.returncode == 0 or routing_timeout_output.exists() or "category=timeout" not in routing_timeout_stderr:
+            fail(f"Codex routing timeout was not bounded safely: {routing_timeout_stderr!r}")
+        for raw_pid in routing_timeout_pids.read_text(encoding="utf-8").splitlines():
+            child_pid = int(raw_pid)
+            for _ in range(20):
+                try:
+                    os.kill(child_pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.05)
+            else:
+                fail("Codex routing timeout left a TERM-ignoring child process running")
 
         old_environment = environment.copy()
         old_arguments = root / "old-arguments.txt"
@@ -1342,7 +1561,7 @@ printf '{}\\n' > "$output"
 
 
 def validate_codex_output_schemas() -> None:
-    for name in ("candidate-findings.codex.schema.json", "evidence-verdict.codex.schema.json"):
+    for name in ("candidate-findings.codex.schema.json", "evidence-verdict.codex.schema.json", "semantic-routing.codex.schema.json"):
         path = ROOT / "schemas" / name
         document = json.loads(path.read_text(encoding="utf-8"))
 

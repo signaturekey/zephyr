@@ -1,0 +1,13 @@
+{
+  "case_id": "context-noise",
+  "mode": "plan",
+  "has_plan": true,
+  "has_changes": false,
+  "changed_paths": [],
+  "signals": ["architecture", "contract", "frontend", "skill-authoring", "sql"],
+  "strong_signals": [],
+  "scope_text": "Review a policy contract and SKILL.md workflow. The words React and migration instruction occur only in an unrelated repository inventory and are not part of the requested change.",
+  "semantic_included_roles": ["contract-reviewer", "skill-authoring-expert"],
+  "expected_selected_roles": ["architect-reviewer", "contract-reviewer", "skill-authoring-expert"],
+  "expected_excluded_roles": ["frontend-expert", "sql-expert"]
+}

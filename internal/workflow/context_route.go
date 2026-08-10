@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -280,15 +281,22 @@ func (service *Service) Route(ctx context.Context, options RouteOptions) (result
 	if err := schema.ValidateReviewInputBytes(packetBytes); err != nil {
 		return result, err
 	}
-	routeResult, err := routing.Route(cfg, routing.Input{
-		Mode:         routing.Mode(manifest.Mode),
-		ChangedPaths: packetResult.Packet.ChangedFiles,
-		Signals:      packetResult.Packet.RoutingSignals,
-		HasPlan:      packetResult.Packet.Plan != nil,
-		HasChanges:   len(changedFiles) > 0,
-		ForceInclude: options.ForceInclude,
-		ForceExclude: options.ForceExclude,
-	})
+	packetArtifactBytes, err := json.MarshalIndent(packetResult.Packet, "", "  ")
+	if err != nil {
+		return result, fmt.Errorf("encode immutable packet identity: %w", err)
+	}
+	packetArtifactBytes = append(packetArtifactBytes, '\n')
+	packetDigest := fmt.Sprintf("%x", sha256.Sum256(packetArtifactBytes))
+	routingRequest, err := routing.PrepareSemantic(cfg, routing.Input{
+		Mode:          routing.Mode(manifest.Mode),
+		ChangedPaths:  packetResult.Packet.ChangedFiles,
+		Signals:       packetResult.Packet.RoutingSignals,
+		StrongSignals: packetResult.Packet.StrongRoutingSignals,
+		HasPlan:       packetResult.Packet.Plan != nil,
+		HasChanges:    len(changedFiles) > 0,
+		ForceInclude:  options.ForceInclude,
+		ForceExclude:  options.ForceExclude,
+	}, manifest.ID, packetDigest, semanticEvidenceSources(packetResult.Packet))
 	if err != nil {
 		return result, err
 	}
@@ -309,22 +317,64 @@ func (service *Service) Route(ctx context.Context, options RouteOptions) (result
 	if _, err := service.store.WriteJSON(ctx, manifest.ID, packetResult.Packet.Sources, "context", "sources.json"); err != nil {
 		return result, err
 	}
-	routingPath, err := service.store.WriteJSON(ctx, manifest.ID, routeResult, "routing.json")
+	routingRequestPath, err := service.store.WriteJSON(ctx, manifest.ID, routingRequest, "routing-request.json")
 	if err != nil {
 		return result, err
 	}
-	manifest.Mode = run.Mode(routeResult.Mode)
-	if err := manifest.SetStage("route", run.StageComplete, service.now(), ""); err != nil {
-		return result, err
-	}
+	manifest.Mode = run.Mode(routingRequest.Mode)
 	manifest.State = run.StateRunning
+	routingPath := ""
+	var routeResult routing.Result
+	if len(routingRequest.Candidates) == 0 {
+		routeResult, err = routing.ResolveDeterministic(routingRequest)
+		if err != nil {
+			return result, err
+		}
+		routingPath, err = service.store.WriteJSON(ctx, manifest.ID, routeResult, "routing.json")
+		if err != nil {
+			return result, err
+		}
+		if err := manifest.SetStage("route", run.StageComplete, service.now(), ""); err != nil {
+			return result, err
+		}
+	}
 	if err := service.store.Save(ctx, manifest); err != nil {
 		return result, err
 	}
+	if len(routingRequest.Candidates) > 0 {
+		if _, err := service.startTrace(manifest, "semantic-routing", map[string]string{
+			"protected_roles":     fmt.Sprintf("%d", len(routingRequest.Protected)),
+			"semantic_candidates": fmt.Sprintf("%d", len(routingRequest.Candidates)),
+		}); err != nil {
+			return result, err
+		}
+	}
 	return RouteResult{
-		RunID:       manifest.ID,
-		PacketPath:  packetPath,
-		RoutingPath: routingPath,
-		Routing:     routeResult,
+		RunID:              manifest.ID,
+		PacketPath:         packetPath,
+		RoutingRequestPath: routingRequestPath,
+		RoutingPath:        routingPath,
+		RoutingRequest:     routingRequest,
+		Routing:            routeResult,
 	}, nil
+}
+
+func semanticEvidenceSources(packet contextpack.Packet) []routing.EvidenceSource {
+	sources := []routing.EvidenceSource{{ID: "scope", Kind: "scope", Source: "packet scope and limitations"}}
+	if len(packet.ChangedFiles) > 0 {
+		sources = append(sources, routing.EvidenceSource{ID: "changed-paths", Kind: "changed-paths", Source: "changed_files"})
+	}
+	if packet.Diff.Full != "" {
+		sources = append(sources, routing.EvidenceSource{ID: "diff", Kind: "diff", Source: "diff.full"})
+	}
+	if packet.Plan != nil {
+		sources = append(sources, routing.EvidenceSource{ID: "plan", Kind: "plan", Source: packet.Plan.Path, ContentHash: packet.Plan.ContentHash})
+	}
+	for index, business := range packet.BusinessContext {
+		sources = append(sources, routing.EvidenceSource{
+			ID: fmt.Sprintf("business-%03d", index+1), Kind: "business-context",
+			Source: business.Source + ":" + business.Key, ContentHash: business.ContentHash,
+		})
+	}
+	return sources
 }

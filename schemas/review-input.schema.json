@@ -17,6 +17,7 @@
     "project_instructions",
     "sources",
     "routing_signals",
+    "strong_routing_signals",
     "coverage_limits",
     "restrictions"
   ],
@@ -47,6 +48,7 @@
     },
     "sources": { "$ref": "#/$defs/sources" },
     "routing_signals": { "$ref": "#/$defs/stringArray" },
+    "strong_routing_signals": { "$ref": "#/$defs/stringArray" },
     "coverage_limits": { "$ref": "#/$defs/stringArray" },
     "restrictions": { "$ref": "#/$defs/stringArray" }
   },

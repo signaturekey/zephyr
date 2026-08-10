@@ -24,6 +24,23 @@
 файл, поместите его в `cases/`, установите `synthetic` в `false` и замените
 значения реальными read-only доказательствами.
 
+В `routing-cases/` лежат отдельные inputs для hybrid routing: контекстный шум,
+явные frontend и SQL scopes и защищённые changed paths. Обычный `go test`
+проверяет deterministic merge, provenance, полный учёт ролей и повторяемость
+`routing.json`; он не подменяет собой проверку LLM-классификации.
+
+Live semantic eval действительно передаёт dispatcher точные packet, request и
+schema blocks и сравнивает выбранные роли. Для Codex сначала создайте свежий
+compatibility descriptor, затем запустите:
+
+```bash
+ZEPHYR_ROUTING_EVAL_HARNESS=codex \
+ZEPHYR_ROUTING_EVAL_COMPAT=/absolute/private/codex-compatibility.txt \
+go test ./evals/... -run TestLiveSemanticRoutingClassification -count=1
+```
+
+Для OpenCode достаточно установить `ZEPHYR_ROUTING_EVAL_HARNESS=opencode`.
+
 Проверить схему, целостность ссылок и все сохранённые сценарии можно командой:
 
 ```bash
