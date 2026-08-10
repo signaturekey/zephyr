@@ -2,6 +2,10 @@ GO ?= go
 GOFMT ?= gofmt
 BINARY ?= bin/zephyr
 GO_FILES := $(shell find . -type f -name '*.go' -not -path './.git/*' -not -path './vendor/*' | sort)
+VERSION ?= dev
+COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+DIRTY ?= $(shell test -z "$$(git status --porcelain 2>/dev/null)" && echo false || echo true)
+LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.dirty=$(DIRTY)
 
 .PHONY: help build install install-cli install-codex install-claude install-opencode install-all install-skill-codex install-skill-claude install-skill-opencode install-skill-all uninstall uninstall-skill uninstall-cli update update-codex update-claude update-opencode update-all fmt fmt-check test test-golden test-evals vet validate-harnesses check
 
@@ -32,12 +36,12 @@ help:
 
 build:
 	@mkdir -p "$(dir $(BINARY))"
-	$(GO) build -trimpath -o "$(BINARY)" ./cmd/zephyr
+	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o "$(BINARY)" ./cmd/zephyr
 
 install: install-cli
 
 install-cli:
-	$(GO) install ./cmd/zephyr
+	$(GO) install -ldflags "$(LDFLAGS)" ./cmd/zephyr
 
 install-codex:
 	$(MAKE) install-cli

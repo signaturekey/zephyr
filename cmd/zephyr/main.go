@@ -13,10 +13,15 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/signaturekey/zephyr/internal/harnessinstall"
 	"github.com/signaturekey/zephyr/internal/run"
+	"github.com/signaturekey/zephyr/internal/schema"
 	"github.com/signaturekey/zephyr/internal/workflow"
 )
 
-var version = "dev"
+var (
+	version = "dev"
+	commit  = "unknown"
+	dirty   = "unknown"
+)
 
 type CLI struct {
 	RunRoot string `name:"run-root" env:"ZEPHYR_RUN_ROOT" help:"Корень хранилища запусков (по умолчанию: XDG cache или ~/.cache/zephyr/runs)." type:"path"`
@@ -365,6 +370,14 @@ type VersionCmd struct{}
 
 func (*VersionCmd) Run(app *runtime) error {
 	return emit(app.stdout, struct {
-		Version string `json:"version"`
-	}{Version: version})
+		Version         string `json:"version"`
+		Commit          string `json:"commit"`
+		Dirty           string `json:"dirty"`
+		ProtocolVersion int    `json:"protocol_version"`
+	}{
+		Version:         version,
+		Commit:          commit,
+		Dirty:           dirty,
+		ProtocolVersion: schema.ProtocolVersion,
+	})
 }
