@@ -222,6 +222,30 @@ def validate_skills() -> None:
             if phrase not in text:
                 fail(f"{path}: choreography is missing {phrase!r}")
 
+    codex_skill = ROOT / "harnesses/codex/SKILL.md"
+    codex_skill_text = codex_skill.read_text(encoding="utf-8")
+    for phrase in (
+        "before `zephyr route`",
+        "--source codex-compatibility",
+        "unknown enabled Codex feature allowed",
+        "unparseable Codex feature output allowed",
+        "portable Codex isolation profile selected",
+    ):
+        if phrase not in codex_skill_text:
+            fail(f"{codex_skill}: compatibility choreography is missing {phrase!r}")
+    probe_index = codex_skill_text.index("<dispatch-script> probe")
+    route_index = codex_skill_text.index("zephyr route --run")
+    if probe_index >= route_index:
+        fail(f"{codex_skill}: compatibility probe must precede routing")
+    pre_route = codex_skill_text[probe_index:route_index]
+    for warning in (
+        "unknown enabled Codex feature allowed",
+        "unparseable Codex feature output allowed",
+        "portable Codex isolation profile selected",
+    ):
+        if warning not in pre_route or "zephyr context limit" not in pre_route:
+            fail(f"{codex_skill}: warning {warning!r} is not connected to a pre-route context limit")
+
     forbidden_choreography = (
         "read its applicable `AGENTS.md`",
         "Read applicable project instructions",
@@ -912,6 +936,15 @@ case "$1" in
       unknown)
         printf '%s\\n' 'apps stable true' 'future_tool stable true'
         ;;
+      mixed-features)
+        printf '%s\\n' 'apps stable true' 'future_tool stable true' 'format changed unexpectedly'
+        ;;
+      unparseable-features)
+        printf '%s\\n' 'feature-output-v2 {"apps":true}'
+        ;;
+      smoke-invalid)
+        printf '%s\\n' 'apps stable true'
+        ;;
       timeout)
         trap '' TERM
         (
@@ -925,7 +958,7 @@ case "$1" in
         wait "$!"
         ;;
       *)
-        printf '%s\\n' 'apps stable true' 'shell_tool stable true' 'multi_agent stable true' 'code_mode_buffered_exec under-development false' 'code_mode_host stable true' 'skill_search stable true' 'enable_fanout stable true' 'js_repl stable true' 'js_repl_tools_only stable true' 'multi_agent_mode stable true' 'multi_agent_v2 stable true' 'search_tool stable true' 'web_search_request stable true'
+        printf '%s\\n' 'apps stable true' 'auto_compaction stable true' 'shell_tool stable true' 'multi_agent stable true' 'code_mode_buffered_exec under-development false' 'code_mode_host stable true' 'skill_search stable true' 'enable_fanout stable true' 'js_repl stable true' 'js_repl_tools_only stable true' 'multi_agent_mode stable true' 'multi_agent_v2 stable true' 'search_tool stable true' 'web_search_request stable true'
         ;;
     esac
     exit 0
@@ -954,6 +987,12 @@ if [ -n "${ZEPHYR_FAKE_COUNT:-}" ]; then
   count=$((count + 1))
   printf '%s\\n' "$count" > "$ZEPHYR_FAKE_COUNT"
 fi
+profile=portable
+for argument in "$@"; do
+  case "$argument" in
+    include_apps_instructions=false) profile=full ;;
+  esac
+done
 printf '%s\\n' "$@" > "$ZEPHYR_FAKE_ARGUMENTS"
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -968,22 +1007,58 @@ done
 [ -f "$CODEX_HOME/auth.json" ]
 printf '%s\n' "$CODEX_HOME:$HOME" >> "$ZEPHYR_FAKE_HOME_CAPTURE"
 command cat > "$ZEPHYR_FAKE_CAPTURE"
-case "${ZEPHYR_FAKE_MODE:-success}" in
+is_smoke=no
+case "$output" in
+  */smoke-last-message.json) is_smoke=yes ;;
+esac
+  case "${ZEPHYR_FAKE_MODE:-success}" in
   success)
     ;;
   transient)
-    if [ "$count" -eq 1 ]; then
+    if [ "$is_smoke" = no ] && [ "$count" -eq 1 ]; then
       echo "stream disconnected before completion: private diagnostic" >&2
       exit 1
     fi
     ;;
+  smoke-transient)
+    if [ "$is_smoke" = yes ] && [ "$count" -eq 1 ]; then
+      echo "stream disconnected before completion: private smoke diagnostic" >&2
+      exit 1
+    fi
+    ;;
+  smoke-always-transient)
+    if [ "$is_smoke" = yes ]; then
+      echo "stream disconnected before completion: private smoke diagnostic" >&2
+      exit 1
+    fi
+    ;;
+  smoke-invalid)
+    if [ "$is_smoke" = yes ]; then
+      printf '%s\\n' '[]' > "$output"
+      exit 0
+    fi
+    ;;
   auth)
-    echo "authentication failed: private diagnostic" >&2
-    exit 1
+    if [ "$is_smoke" = no ]; then
+      echo "authentication failed: private diagnostic" >&2
+      exit 1
+    fi
     ;;
   sandbox)
-    echo "failed to initialize in-process app-server client: Operation not permitted" >&2
-    exit 1
+    if [ "$is_smoke" = no ]; then
+      echo "failed to initialize in-process app-server client: Operation not permitted" >&2
+      exit 1
+    fi
+    ;;
+  full-config-incompatible)
+    if [ "$profile" = full ]; then
+      echo "invalid configuration: include_apps_instructions" >&2
+      exit 2
+    fi
+    ;;
+  all-config-incompatible)
+    echo "invalid configuration: approval_policy" >&2
+    exit 2
     ;;
   *)
     exit 2
@@ -1050,6 +1125,7 @@ printf '{}\\n' > "$output"
             if required not in argv:
                 fail(f"Codex dispatcher invocation lacks {required!r}")
         for expected_feature in (
+            "auto_compaction",
             "shell_tool",
             "code_mode_buffered_exec",
             "code_mode_host",
@@ -1160,6 +1236,42 @@ printf '{}\\n' > "$output"
         if changed_result.returncode == 0 or "Codex binary changed after compatibility probe" not in changed_result.stderr.decode(errors="replace"):
             fail("Codex dispatcher accepted a binary changed after compatibility probe")
 
+        descriptor_lines = compatibility.read_bytes().splitlines(keepends=True)
+        descriptor_payload_lines = [descriptor_lines[0], descriptor_lines[2], descriptor_lines[1], descriptor_lines[3], descriptor_lines[4], *descriptor_lines[6:]]
+        reordered_payload = b"".join(descriptor_payload_lines)
+        reordered_hash = hashlib.sha256(reordered_payload).hexdigest().encode()
+        reordered_compatibility = root / "reordered-compatibility.txt"
+        reordered_compatibility.write_bytes(
+            b"".join(
+                [
+                    *descriptor_payload_lines[:5],
+                    b"descriptor_sha256=" + reordered_hash + b"\n",
+                    *descriptor_payload_lines[5:],
+                ]
+            )
+        )
+        reordered_output = root / "candidate-reordered-compatibility.json"
+        reordered_result = subprocess.run(
+            [
+                "sh",
+                str(dispatcher),
+                "reviewer",
+                "--role",
+                "code-reviewer",
+                "--packet",
+                str(packet),
+                "--compat",
+                str(reordered_compatibility),
+                "--output",
+                str(reordered_output),
+            ],
+            check=False,
+            capture_output=True,
+            env=environment,
+        )
+        if reordered_result.returncode != 0 or reordered_output.read_bytes() != b"{}\n":
+            fail(f"Codex dispatcher still depends on descriptor field positions: {reordered_result.stderr.decode(errors='replace')}")
+
         tampered_compatibility = root / "tampered-compatibility.txt"
         tampered_compatibility.write_bytes(compatibility.read_bytes().replace(b"apps=true", b"apps=false", 1))
         tampered_output = root / "candidate-tampered-compatibility.json"
@@ -1185,7 +1297,13 @@ printf '{}\\n' > "$output"
             fail("Codex dispatcher accepted a tampered compatibility descriptor")
 
         unknown_environment = environment.copy()
-        unknown_environment["ZEPHYR_FAKE_FEATURE_PROFILE"] = "unknown"
+        unknown_arguments = root / "unknown-arguments.txt"
+        unknown_environment.update(
+            {
+                "ZEPHYR_FAKE_FEATURE_PROFILE": "unknown",
+                "ZEPHYR_FAKE_ARGUMENTS": str(unknown_arguments),
+            }
+        )
         unknown_compatibility = root / "unknown-compatibility.txt"
         unknown_probe = subprocess.run(
             ["sh", str(dispatcher), "probe", "--output", str(unknown_compatibility)],
@@ -1193,8 +1311,258 @@ printf '{}\\n' > "$output"
             capture_output=True,
             env=unknown_environment,
         )
-        if unknown_probe.returncode == 0 or "unknown enabled feature" not in unknown_probe.stderr.decode(errors="replace"):
-            fail("Codex compatibility probe did not fail closed for an unknown enabled feature")
+        unknown_stderr = unknown_probe.stderr.decode(errors="replace")
+        if unknown_probe.returncode != 0:
+            fail(f"Codex compatibility probe rejected an unknown enabled feature: {unknown_stderr}")
+        if "warning: unknown enabled feature allowed: future_tool" not in unknown_stderr:
+            fail("Codex compatibility probe omitted the named unknown-feature warning")
+        unknown_output = root / "candidate-unknown.json"
+        unknown_result = subprocess.run(
+            [
+                "sh",
+                str(dispatcher),
+                "reviewer",
+                "--role",
+                "code-reviewer",
+                "--packet",
+                str(packet),
+                "--compat",
+                str(unknown_compatibility),
+                "--output",
+                str(unknown_output),
+            ],
+            check=False,
+            capture_output=True,
+            env=unknown_environment,
+        )
+        if unknown_result.returncode != 0:
+            fail(f"Codex dispatcher rejected a descriptor with an unknown enabled feature: {unknown_result.stderr.decode(errors='replace')}")
+        unknown_argv = unknown_arguments.read_text(encoding="utf-8").splitlines()
+        if any(unknown_argv[index : index + 2] == ["--disable", "future_tool"] for index in range(len(unknown_argv) - 1)):
+            fail("Codex dispatcher disabled an unknown feature without an isolation policy")
+        if not any(unknown_argv[index : index + 2] == ["--disable", "apps"] for index in range(len(unknown_argv) - 1)):
+            fail("Codex dispatcher stopped disabling known features after a compatibility warning")
+
+        for profile, parsed, ignored, expect_known_disable in (
+            ("mixed-features", 2, 1, True),
+            ("unparseable-features", 0, 1, False),
+        ):
+            profile_arguments = root / f"{profile}-arguments.txt"
+            profile_environment = environment.copy()
+            profile_environment.update(
+                {
+                    "ZEPHYR_FAKE_FEATURE_PROFILE": profile,
+                    "ZEPHYR_FAKE_ARGUMENTS": str(profile_arguments),
+                }
+            )
+            profile_compatibility = root / f"{profile}-compatibility.txt"
+            profile_probe = subprocess.run(
+                ["sh", str(dispatcher), "probe", "--output", str(profile_compatibility)],
+                check=False,
+                capture_output=True,
+                env=profile_environment,
+            )
+            profile_stderr = profile_probe.stderr.decode(errors="replace")
+            diagnostic_pattern = rf"warning: partially unparseable feature output allowed: parsed={parsed} ignored={ignored} raw_sha256=[0-9a-f]{{64}}"
+            if profile_probe.returncode != 0:
+                fail(f"Codex compatibility probe rejected {profile!r} output: {profile_stderr}")
+            if re.search(diagnostic_pattern, profile_stderr) is None:
+                fail(f"Codex compatibility probe omitted sanitized parser diagnostics for {profile!r}: {profile_stderr!r}")
+            if "format changed unexpectedly" in profile_stderr or "feature-output-v2" in profile_stderr:
+                fail(f"Codex compatibility probe leaked raw feature output for {profile!r}")
+            profile_output = root / f"candidate-{profile}.json"
+            profile_result = subprocess.run(
+                [
+                    "sh",
+                    str(dispatcher),
+                    "reviewer",
+                    "--role",
+                    "code-reviewer",
+                    "--packet",
+                    str(packet),
+                    "--compat",
+                    str(profile_compatibility),
+                    "--output",
+                    str(profile_output),
+                ],
+                check=False,
+                capture_output=True,
+                env=profile_environment,
+            )
+            if profile_result.returncode != 0:
+                fail(f"Codex dispatcher rejected {profile!r} compatibility descriptor: {profile_result.stderr.decode(errors='replace')}")
+            profile_argv = profile_arguments.read_text(encoding="utf-8").splitlines()
+            has_known_disable = any(
+                profile_argv[index : index + 2] == ["--disable", "apps"] for index in range(len(profile_argv) - 1)
+            )
+            if has_known_disable != expect_known_disable:
+                fail(f"Codex dispatcher used the wrong known-feature disables for {profile!r}")
+
+        invalid_environment = environment.copy()
+        invalid_environment["ZEPHYR_FAKE_MODE"] = "smoke-invalid"
+        invalid_compatibility = root / "invalid-smoke-compatibility.txt"
+        invalid_probe = subprocess.run(
+            ["sh", str(dispatcher), "probe", "--output", str(invalid_compatibility)],
+            check=False,
+            capture_output=True,
+            env=invalid_environment,
+        )
+        invalid_stderr = invalid_probe.stderr.decode(errors="replace")
+        if invalid_probe.returncode == 0 or invalid_compatibility.exists():
+            fail("Codex compatibility probe accepted a non-object smoke result")
+        if "compatibility runtime smoke" not in invalid_stderr:
+            fail(f"Codex invalid smoke failure lacks a safe diagnostic: {invalid_stderr!r}")
+
+        smoke_retry_environment = environment.copy()
+        smoke_retry_count = root / "smoke-retry-count"
+        smoke_retry_environment.update(
+            {
+                "ZEPHYR_FAKE_COUNT": str(smoke_retry_count),
+                "ZEPHYR_FAKE_MODE": "smoke-transient",
+            }
+        )
+        smoke_retry_compatibility = root / "smoke-retry-compatibility.txt"
+        smoke_retry_probe = subprocess.run(
+            ["sh", str(dispatcher), "probe", "--output", str(smoke_retry_compatibility)],
+            check=False,
+            capture_output=True,
+            env=smoke_retry_environment,
+        )
+        if smoke_retry_probe.returncode != 0 or smoke_retry_count.read_text(encoding="utf-8").strip() != "2":
+            fail("Codex compatibility probe did not retry and recover from a transient smoke failure")
+
+        smoke_exhausted_environment = environment.copy()
+        smoke_exhausted_count = root / "smoke-exhausted-count"
+        smoke_exhausted_environment.update(
+            {
+                "ZEPHYR_FAKE_COUNT": str(smoke_exhausted_count),
+                "ZEPHYR_FAKE_MODE": "smoke-always-transient",
+            }
+        )
+        smoke_exhausted_compatibility = root / "smoke-exhausted-compatibility.txt"
+        smoke_exhausted_probe = subprocess.run(
+            ["sh", str(dispatcher), "probe", "--output", str(smoke_exhausted_compatibility)],
+            check=False,
+            capture_output=True,
+            env=smoke_exhausted_environment,
+        )
+        smoke_exhausted_stderr = smoke_exhausted_probe.stderr.decode(errors="replace")
+        if smoke_exhausted_probe.returncode == 0 or smoke_exhausted_count.read_text(encoding="utf-8").strip() != "2":
+            fail("Codex compatibility probe did not exhaust two transient smoke attempts")
+        if "after 2 attempts" not in smoke_exhausted_stderr or "private smoke diagnostic" in smoke_exhausted_stderr:
+            fail("Codex exhausted smoke retry leaked raw diagnostics or wrong attempt count")
+
+        portable_arguments = root / "portable-arguments.txt"
+        portable_environment = environment.copy()
+        portable_environment.update(
+            {
+                "ZEPHYR_FAKE_MODE": "full-config-incompatible",
+                "ZEPHYR_FAKE_ARGUMENTS": str(portable_arguments),
+            }
+        )
+        portable_compatibility = root / "portable-compatibility.txt"
+        portable_probe = subprocess.run(
+            ["sh", str(dispatcher), "probe", "--output", str(portable_compatibility)],
+            check=False,
+            capture_output=True,
+            env=portable_environment,
+        )
+        portable_stderr = portable_probe.stderr.decode(errors="replace")
+        if portable_probe.returncode != 0:
+            fail(f"Codex compatibility probe did not fall back to the portable profile: {portable_stderr}")
+        if "warning: full Codex isolation profile unsupported; portable profile selected" not in portable_stderr:
+            fail("Codex compatibility probe omitted the portable-profile warning")
+        if portable_compatibility.read_text(encoding="utf-8").splitlines().count("profile=portable") != 1:
+            fail("Codex compatibility descriptor did not freeze the portable profile")
+        if portable_compatibility.read_text(encoding="utf-8").splitlines().count("omitted_config=include_apps_instructions") != 1:
+            fail("Codex compatibility descriptor did not freeze the single omitted portable setting")
+        portable_output = root / "candidate-portable.json"
+        portable_result = subprocess.run(
+            [
+                "sh",
+                str(dispatcher),
+                "reviewer",
+                "--role",
+                "code-reviewer",
+                "--packet",
+                str(packet),
+                "--compat",
+                str(portable_compatibility),
+                "--output",
+                str(portable_output),
+            ],
+            check=False,
+            capture_output=True,
+            env=portable_environment,
+        )
+        if portable_result.returncode != 0:
+            fail(f"Codex dispatcher did not reuse the frozen portable profile: {portable_result.stderr.decode(errors='replace')}")
+        portable_argv = portable_arguments.read_text(encoding="utf-8").splitlines()
+        if "include_apps_instructions=false" in portable_argv:
+            fail("Codex portable profile retained a version-volatile full-profile setting")
+        for required_argument in (
+            "--strict-config",
+            "--ignore-user-config",
+            'approval_policy="never"',
+            'web_search="disabled"',
+            'include_environment_context=false',
+            'allow_login_shell=false',
+            'apps={ _default = { enabled = false, destructive_enabled = false, open_world_enabled = false } }',
+            'memories={ use_memories = false, generate_memories = false, dedicated_tools = false }',
+        ):
+            if required_argument not in portable_argv:
+                fail(f"Codex portable profile omitted required argument {required_argument!r}")
+        if 'include_apps_instructions=false' in portable_argv:
+            fail("Codex portable profile retained the unsupported configuration setting")
+        if not any(portable_argv[index : index + 2] == ["--sandbox", "read-only"] for index in range(len(portable_argv) - 1)):
+            fail("Codex portable profile omitted read-only sandboxing")
+        if not any(portable_argv[index : index + 2] == ["--disable", "apps"] for index in range(len(portable_argv) - 1)):
+            fail("Codex portable profile omitted known feature isolation")
+
+        incompatible_environment = environment.copy()
+        incompatible_environment["ZEPHYR_FAKE_MODE"] = "all-config-incompatible"
+        incompatible_compatibility = root / "incompatible-compatibility.txt"
+        incompatible_probe = subprocess.run(
+            ["sh", str(dispatcher), "probe", "--output", str(incompatible_compatibility)],
+            check=False,
+            capture_output=True,
+            env=incompatible_environment,
+        )
+        incompatible_stderr = incompatible_probe.stderr.decode(errors="replace")
+        if incompatible_probe.returncode == 0 or incompatible_compatibility.exists():
+            fail("Codex compatibility probe accepted an incompatible portable profile")
+        if "category=config" not in incompatible_stderr or "stderr_sha256=" not in incompatible_stderr:
+            fail(f"Codex portable-profile failure lacks sanitized config diagnostics: {incompatible_stderr!r}")
+        if "invalid configuration" in incompatible_stderr or "approval_policy" in incompatible_stderr:
+            fail("Codex portable-profile failure leaked raw stderr")
+
+        tampered_profile = root / "tampered-profile.txt"
+        tampered_profile.write_bytes(compatibility.read_bytes().replace(b"profile=full", b"profile=portable", 1))
+        tampered_profile_output = root / "candidate-tampered-profile.json"
+        tampered_profile_result = subprocess.run(
+            [
+                "sh",
+                str(dispatcher),
+                "reviewer",
+                "--role",
+                "code-reviewer",
+                "--packet",
+                str(packet),
+                "--compat",
+                str(tampered_profile),
+                "--output",
+                str(tampered_profile_output),
+            ],
+            check=False,
+            capture_output=True,
+            env=environment,
+        )
+        tampered_profile_stderr = tampered_profile_result.stderr.decode(errors="replace")
+        if tampered_profile_result.returncode == 0 or not any(
+            reason in tampered_profile_stderr
+            for reason in ("compatibility descriptor hash mismatch", "malformed compatibility descriptor")
+        ):
+            fail("Codex dispatcher accepted a tampered compatibility profile")
 
         missing_option_environment = environment.copy()
         missing_option_environment["ZEPHYR_FAKE_FEATURE_PROFILE"] = "missing-option"

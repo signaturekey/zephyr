@@ -64,7 +64,25 @@ The core records fetch time, provenance, and the content hash in the immutable s
 zephyr context limit --run <run-id> --source <source> --reason <safe-concise-reason>
 ```
 
-7. After all capabilities and context are imported or limited, freeze the packet and select roles exactly once:
+7. Run the compatibility probe before `zephyr route`: create one private temporary directory outside the reviewed repository and freeze the Codex CLI capability set once. For an installed skill use `scripts/dispatch.sh`; in the canonical source checkout use `harnesses/codex/dispatch.sh`:
+
+```text
+<dispatch-script> probe --output <absolute-private-path>/codex-compatibility.txt
+```
+
+The probe uses a private `CODEX_HOME`, validates required Codex CLI options and one minimal isolated runtime call whose output must be exactly `{}`, selects and freezes the strongest compatible isolation profile, and records the active binary fingerprint and feature set. Every recognized feature reported by that exact binary is disabled in later isolated processes. If the full profile rejects one named isolation setting, the portable profile omits only that setting and freezes its name in the descriptor; it does not silently remove the remaining isolation controls.
+
+Unknown enabled features, unparseable feature output, and portable-profile selection are explicit coverage limitations rather than startup failures. For each warning emitted by the probe, add the matching immutable limitation before routing:
+
+```text
+zephyr context limit --run <run-id> --source codex-compatibility --reason "unknown enabled Codex feature allowed: <feature>"
+zephyr context limit --run <run-id> --source codex-compatibility --reason "unparseable Codex feature output allowed: parsed=<n> ignored=<n> raw_sha256=<sha256>"
+zephyr context limit --run <run-id> --source codex-compatibility --reason "portable Codex isolation profile selected"
+```
+
+Do not copy raw probe stderr into the run. Missing required safety or transport options, failure of the portable profile, malformed or tampered compatibility descriptors, and a Codex binary change remain hard failures.
+
+8. After all capabilities, context, and Codex compatibility limitations are imported, freeze the packet and select roles exactly once:
 
 ```text
 zephyr route --run <run-id> [--add-role <role>] [--exclude-role <role>]
@@ -80,13 +98,7 @@ Read `routing.json`; run exactly its selected reviewer roles and no role twice.
 
 Use the bundled process dispatcher. For an installed skill it is `scripts/dispatch.sh`; in the canonical source checkout it is `harnesses/codex/dispatch.sh`. Require a regular non-symlink executable and its adjacent trusted package assets. The dispatcher verifies selected prompts and schemas against `references/assets.sha256` or `harnesses/assets.sha256`. Fail closed if trusted provenance, manifest verification, or any asset is incomplete. Never reconstruct prompts or schemas from memory. The manifest detects drift but is not a signature; only use a checkout or installation the user already trusts.
 
-Before starting any reviewer, create one private temporary directory outside the reviewed repository and freeze the Codex CLI capability set once:
-
-```text
-<dispatch-script> probe --output <absolute-private-path>/codex-compatibility.txt
-```
-
-The probe uses a private `CODEX_HOME`, validates required Codex CLI options, and records the active binary fingerprint and feature set. Every recognized feature reported by that exact binary is disabled in the isolated process; an unknown enabled feature fails closed. Keep the descriptor private and pass the same regular descriptor file to every reviewer, format retry, and evidence gate. Do not probe again after dispatch begins; a changed Codex binary invalidates the run's coverage rather than silently changing its process boundary. Compatibility probes run in their own process session: on timeout the dispatcher terminates the full session and escalates to `SIGKILL` before retrying or cleaning its private home.
+Use the compatibility descriptor created before routing. Keep it private and pass the same regular descriptor file to every reviewer, format retry, and evidence gate. Do not probe again after routing or dispatch begins; a changed Codex binary invalidates the run's coverage rather than silently changing its process boundary. Compatibility probes run in their own process session: on timeout the dispatcher terminates the full session and escalates to `SIGKILL` before retrying or cleaning its private home.
 
 Dispatch every selected role. `limits.max_parallel_reviewers` limits only simultaneous child processes; it must never silently remove routed roles. If the host cannot run that many processes concurrently, use fresh isolated processes in bounded batches or sequentially and still account for every role.
 
