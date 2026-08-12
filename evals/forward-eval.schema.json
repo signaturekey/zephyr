@@ -61,7 +61,7 @@
       "additionalProperties": false,
       "required": ["harness", "mode", "executed_at", "run_id", "review_artifact", "coverage_limits", "findings"],
       "properties": {
-        "harness": {"type": "string", "enum": ["codex-app", "claude-code"]},
+        "harness": {"type": "string", "enum": ["codex-app"]},
         "mode": {"type": "string", "enum": ["plan", "implementation", "alignment"]},
         "executed_at": {"type": "string", "format": "date-time"},
         "run_id": {"$ref": "#/$defs/nonEmpty"},

@@ -5,7 +5,7 @@ umask 077
 
 usage() {
   cat >&2 <<'EOF'
-usage: curl -fsSL <bootstrap-url> | sh -s -- codex|claude|all
+usage: curl -fsSL <bootstrap-url> | sh
 
 Environment overrides:
   ZEPHYR_REPOSITORY_URL  Git repository to clone.
@@ -13,9 +13,8 @@ Environment overrides:
 EOF
 }
 
-surface=${1:-}
-case "$surface" in
-  codex|claude|all) ;;
+case "${1:-}" in
+  '') ;;
   --help|-h)
     usage
     exit 0
@@ -26,7 +25,7 @@ case "$surface" in
     ;;
 esac
 
-if [ "$#" -ne 1 ]; then
+if [ "$#" -ne 0 ]; then
   usage
   exit 2
 fi
@@ -58,7 +57,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 git clone --quiet --depth 1 --branch "$repository_ref" "$repository_url" "$bootstrap_root/repository"
-make -C "$bootstrap_root/repository" "install-$surface"
+make -C "$bootstrap_root/repository" install
 
-echo "Установлены Zephyr CLI и пакет harness $surface."
+echo "Установлены Zephyr CLI и пакет Codex."
 echo "Начните новую сессию harness, чтобы загрузились установленный skill и agents."

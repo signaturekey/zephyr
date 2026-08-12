@@ -107,9 +107,9 @@ func TestSemanticRoutingResolutionFixtures(t *testing.T) {
 func TestLiveSemanticRoutingClassification(t *testing.T) {
 	harness := os.Getenv("ZEPHYR_ROUTING_EVAL_HARNESS")
 	if harness == "" {
-		t.Skip("set ZEPHYR_ROUTING_EVAL_HARNESS=codex or opencode to run live semantic classification evals")
+		t.Skip("set ZEPHYR_ROUTING_EVAL_HARNESS=codex to run live semantic classification evals")
 	}
-	if harness != "codex" && harness != "opencode" {
+	if harness != "codex" {
 		t.Fatalf("unsupported ZEPHYR_ROUTING_EVAL_HARNESS %q", harness)
 	}
 	dispatcher, err := filepath.Abs(filepath.Join("..", "harnesses", harness, "dispatch.sh"))

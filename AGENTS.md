@@ -17,7 +17,7 @@ Do not commit, push, create branches, publish review comments, or mutate externa
 
 ## 2. Product definition
 
-Zephyr is a local, read-only, evidence-gated reviewer for engineering specifications and code changes. It runs through a supported agent harness, currently Codex App or Claude Code, and uses the inference and corporate MCP capabilities already available to that harness.
+Zephyr is a local, read-only, evidence-gated reviewer for engineering specifications and code changes. It runs through a supported agent harness, currently Codex, and uses the inference and corporate MCP capabilities already available to that harness.
 
 Zephyr can:
 
@@ -39,7 +39,7 @@ The primary goal is to give a developer a high-quality independent review before
 
 Additional goals:
 
-- the same deterministic protocol across Codex App and Claude Code;
+- a deterministic protocol across Codex runs;
 - no dependency on one model or model vendor;
 - narrow, non-overlapping reviewer scopes;
 - reproducible inputs, intermediate artifacts, and reports;
@@ -62,7 +62,7 @@ Unless a later product decision explicitly changes the boundary, Zephyr does not
 
 ### 2.3 Terms
 
-- Harness: the agent environment that orchestrates a run, such as Codex App or Claude Code.
+- Harness: the agent environment that orchestrates a run, such as Codex.
 - Core: the deterministic Go CLI responsible for collection, routing, validation, aggregation, and rendering.
 - Harness package: the skill, agent definitions, and integration instructions for one harness.
 - Reviewer role: an isolated specialist agent with a closed scope.
@@ -119,7 +119,7 @@ Auto mode resolves deterministically:
 User
   |
   v
-Codex or Claude Code harness
+Codex harness
   |-- reads repository instructions
   |-- snapshots Jira, Confluence, and Bitbucket through available MCP
   |-- invokes the Zephyr CLI for deterministic stages
@@ -140,7 +140,7 @@ Deterministic Go core
   '-- safe structured trace
 ~~~
 
-The separation is mandatory. The Go process does not own Codex or Claude agent threads and must not acquire an LLM API dependency to do so. The harness owns model execution and MCP access; the core owns reproducible policy and data transformations.
+The separation is mandatory. The Go process does not own Codex agent threads and must not acquire an LLM API dependency to do so. The harness owns model execution and MCP access; the core owns reproducible policy and data transformations.
 
 ### 4.2 Core responsibilities
 
@@ -205,7 +205,6 @@ internal/workflow/          deterministic CLI-stage orchestration
 roles/                      shared reviewer prompts and protocol
 schemas/                    versioned JSON schemas
 harnesses/codex/            Codex skill, dispatcher, and agent definitions
-harnesses/claude-code/      Claude Code skill and agent definitions
 configs/                    embedded default configuration
 fixtures/                   deterministic golden fixtures
 evals/                      forward-evaluation assets
@@ -259,7 +258,6 @@ Untracked content requires explicit user consent or an explicit flag and still p
 Collect only relevant instructions and sources:
 
 - applicable AGENTS.md files from the repository root toward changed files;
-- CLAUDE.md where the harness uses it;
 - .zephyr/config.yaml;
 - applicable review policies;
 - the explicitly supplied specification or change specification.
@@ -612,7 +610,7 @@ The checked-in default configuration is the executable source for exact default 
 
 ### 12.1 Shared contract
 
-Codex and Claude Code must use:
+Codex must use:
 
 - the same review packet;
 - the same role prompts and scopes;
@@ -633,9 +631,6 @@ The main agent orchestrates and hands off results; reviewer processes perform th
 
 Parallel dispatch is preferred. Sequential batching is valid only when it preserves role isolation and the immutable packet.
 
-### 12.3 Claude Code package
-
-The Claude Code package provides equivalent skill choreography and role-specific agents using the shared prompts, schemas, core commands, and safety rules. Harness-specific MCP discovery and process execution remain inside the Claude adapter.
 
 ## 13. CLI and run artifacts
 
@@ -800,7 +795,7 @@ Also maintain focused fixtures for TypeScript/frontend, Markdown-skill, reliabil
 
 ### 16.3 Harness verification
 
-Validate for each harness:
+Validate the Codex harness:
 
 - activation and asset integrity;
 - mandatory Jira, Confluence, and Bitbucket capability preflight;
@@ -832,7 +827,7 @@ Use make check for the standard repository check and go test -race ./... -count=
 
 Zephyr is acceptable when:
 
-1. Codex App and Claude Code can start equivalent reviews from a user request.
+1. Codex can start a review from a user request.
 2. Local review includes staged and unstaged changes without requiring a commit.
 3. Specification review works without a Git diff.
 4. Alignment review uses the specification, diff, and available business requirements.
@@ -859,7 +854,6 @@ The implementation sequence is:
 
 1. Protocol, schemas, run model, and deterministic Go core.
 2. Fully working Codex harness.
-3. Claude Code harness using the same protocol and roles.
 4. Pilot evaluation and calibration.
 
 The current protocol includes Go, TypeScript/frontend, reliability, messaging, infrastructure, non-relational storage, SQL, contract, security, QA, architecture, simplification, and Markdown-skill review roles. Extend it by adding a narrow role, its semantic scope and protected routing signals, schemas or category constraints, harness assets, and tests; do not add language-specific review policy to the core.

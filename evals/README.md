@@ -39,8 +39,6 @@ ZEPHYR_ROUTING_EVAL_COMPAT=/absolute/private/codex-compatibility.txt \
 go test ./evals/... -run TestLiveSemanticRoutingClassification -count=1
 ```
 
-Для OpenCode достаточно установить `ZEPHYR_ROUTING_EVAL_HARNESS=opencode`.
-
 Проверить схему, целостность ссылок и все сохранённые сценарии можно командой:
 
 ```bash

@@ -19,7 +19,7 @@
     ]
   },
   "zephyr_run": {
-    "harness": "claude-code",
+    "harness": "codex-app",
     "mode": "implementation",
     "executed_at": "2026-08-02T12:30:00Z",
     "run_id": "synthetic-multi-role-match-run",

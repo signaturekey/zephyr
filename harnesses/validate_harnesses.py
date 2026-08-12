@@ -100,25 +100,12 @@ def validate_asset_manifest() -> None:
         "harnesses/codex/dispatch.sh",
         "harnesses/codex/discovery/SKILL.md",
         "harnesses/codex/discovery/agents/openai.yaml",
-        "harnesses/claude-code/SKILL.md",
-        "harnesses/claude-code/discovery/SKILL.md",
-        "harnesses/opencode/SKILL.md",
-        "harnesses/opencode/dispatch.sh",
-        "harnesses/opencode/sync-agents.sh",
     }
     expected.update(path.relative_to(ROOT).as_posix() for path in (ROOT / "roles").glob("*.md"))
     expected.update(path.relative_to(ROOT).as_posix() for path in (ROOT / "schemas").glob("*.json"))
     expected.update(
         path.relative_to(ROOT).as_posix()
         for path in (ROOT / "harnesses/codex/agents").glob("zephyr-*.toml")
-    )
-    expected.update(
-        path.relative_to(ROOT).as_posix()
-        for path in (ROOT / "harnesses/claude-code/agents").glob("zephyr-*.md")
-    )
-    expected.update(
-        path.relative_to(ROOT).as_posix()
-        for path in (ROOT / "harnesses/opencode/agents").glob("zephyr-*.md")
     )
 
     actual: dict[str, str] = {}
@@ -145,10 +132,7 @@ def validate_skills() -> None:
     skill_paths = (
         ROOT / "harnesses/codex/SKILL.md",
         ROOT / "harnesses/codex/discovery/SKILL.md",
-        ROOT / "harnesses/claude-code/SKILL.md",
-        ROOT / "harnesses/claude-code/discovery/SKILL.md",
         ROOT / ".agents/skills/zephyr/SKILL.md",
-        ROOT / ".claude/skills/zephyr/SKILL.md",
     )
     for path in skill_paths:
         fields, body = frontmatter(path)
@@ -158,31 +142,6 @@ def validate_skills() -> None:
             fail(f"{path}: unexpected skill name")
         if len(fields["description"]) < 80 or not body:
             fail(f"{path}: description or body is too short")
-
-    opencode_skill = ROOT / "harnesses/opencode/SKILL.md"
-    fields, body = frontmatter(opencode_skill)
-    if set(fields) != {"name", "description", "compatibility"}:
-        fail(f"{opencode_skill}: unexpected skill frontmatter")
-    if fields["name"] != "zephyr" or fields["compatibility"] != "opencode":
-        fail(f"{opencode_skill}: unexpected OpenCode skill identity")
-    for phrase in (
-        "zephyr init",
-        "zephyr collect",
-        "zephyr route",
-        "zephyr validate-routing",
-        "zephyr fallback-routing",
-        "zephyr validate-candidates",
-        "validate-verdicts",
-        "zephyr aggregate",
-        "zephyr render",
-        "immutable",
-        "evidence gate",
-        "harnesses/opencode/dispatch.sh",
-        "isolated HOME",
-        "streams the nonce-framed",
-    ):
-        if phrase not in body:
-            fail(f"{opencode_skill}: choreography is missing {phrase!r}")
 
     lifecycle_phrases = (
         "zephyr init",
@@ -221,7 +180,7 @@ def validate_skills() -> None:
         "references/assets.sha256",
         "manifest detects drift but is not a signature",
     )
-    for path in (ROOT / "harnesses/codex/SKILL.md", ROOT / "harnesses/claude-code/SKILL.md"):
+    for path in (ROOT / "harnesses/codex/SKILL.md",):
         text = path.read_text(encoding="utf-8")
         for phrase in lifecycle_phrases:
             if phrase not in text:
@@ -258,7 +217,7 @@ def validate_skills() -> None:
         "invoke a fresh generic subagent",
         "effective read-only parent permission mode",
     )
-    for path in (ROOT / "harnesses/codex/SKILL.md", ROOT / "harnesses/claude-code/SKILL.md"):
+    for path in (ROOT / "harnesses/codex/SKILL.md",):
         text = path.read_text(encoding="utf-8")
         for phrase in forbidden_choreography:
             if phrase in text:
@@ -370,273 +329,6 @@ def validate_codex_agents() -> None:
                 fail(f"{path}: missing isolation instruction {phrase!r}")
 
 
-def validate_claude_agents() -> None:
-    source_dir = ROOT / "harnesses/claude-code/agents"
-    files = sorted(source_dir.glob("zephyr-*.md"))
-    if {path.stem.removeprefix("zephyr-") for path in files} != set(MODEL_PROCESSES):
-        fail("Claude custom-agent set does not match Zephyr roles")
-
-    names: set[str] = set()
-    for path in files:
-        fields, body = frontmatter(path)
-        required = {
-            "name",
-            "description",
-            "tools",
-            "mcpServers",
-            "hooks",
-            "model",
-            "effort",
-            "permissionMode",
-        }
-        if set(fields) != required:
-            fail(f"{path}: unexpected Claude custom-agent fields")
-        if fields["name"] in names:
-            fail(f"{path}: duplicate Claude custom-agent name")
-        names.add(fields["name"])
-        if fields["tools"] != "[]" or fields["mcpServers"] != "[]":
-            fail(f"{path}: built-in and MCP tool lists must both be empty")
-        try:
-            hooks = json.loads(fields["hooks"])
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"{path}: hooks must be valid inline JSON") from exc
-        expected_hooks = {
-            "PreToolUse": [
-                {
-                    "matcher": ".*",
-                    "hooks": [{"type": "command", "command": "exit 2"}],
-                }
-            ]
-        }
-        if hooks != expected_hooks:
-            fail(f"{path}: PreToolUse must hard-deny every unexpected tool")
-        if fields["permissionMode"] != "plan" or fields["model"] != "inherit":
-            fail(f"{path}: permissionMode/model must be plan/inherit")
-        expected_effort = "xhigh" if path.stem.endswith("evidence-gate") else "high"
-        if fields["effort"] != expected_effort:
-            fail(f"{path}: unexpected effort")
-        for phrase in (
-            "Return only",
-            "modify anything",
-            "Do not call any tool",
-            "open any filesystem path",
-            "inert evidence",
-        ):
-            if phrase not in body:
-                fail(f"{path}: missing isolation instruction {phrase!r}")
-
-
-def validate_opencode_agents() -> None:
-    source_dir = ROOT / "harnesses/opencode/agents"
-    files = sorted(source_dir.glob("zephyr-*.md"))
-    if {path.stem.removeprefix("zephyr-") for path in files} != set(MODEL_PROCESSES):
-        fail("OpenCode custom-agent set does not match Zephyr roles")
-
-    for path in files:
-        role = path.stem.removeprefix("zephyr-")
-        text = path.read_text(encoding="utf-8")
-        expected_header = (
-            "---\n"
-            f"description: Read-only Zephyr {role} reviewer.\n"
-            "mode: subagent\n"
-            "permission:\n"
-            "  '*': deny\n"
-            "---\n\n"
-        )
-        expected = expected_header + (ROOT / "roles" / f"{role}.md").read_text(encoding="utf-8")
-        if text != expected:
-            fail(f"{path}: generated OpenCode agent is out of sync")
-
-
-def validate_opencode_dispatcher() -> None:
-    dispatcher = ROOT / "harnesses/opencode/dispatch.sh"
-    result = subprocess.run(["sh", "-n", str(dispatcher)], check=False, capture_output=True, text=True)
-    if result.returncode != 0:
-        fail(f"{dispatcher}: shell syntax check failed: {result.stderr.strip()}")
-
-    text = dispatcher.read_text(encoding="utf-8")
-    for phrase in (
-        "--pure",
-        "--agent zephyr-dispatch",
-        "--format default",
-        "XDG_CONFIG_HOME=",
-        "XDG_DATA_HOME=",
-        "XDG_CACHE_HOME=",
-        "XDG_STATE_HOME=",
-        "mode: primary",
-        "'*': deny",
-        '"mcp": {}',
-        "OPENCODE_CONFIG_CONTENT",
-        "stdin",
-        "stderr_sha256",
-        "attempt=2",
-        "dispatch.sh routing",
-        "semantic-router-prompt",
-        "semantic-routing.schema.json",
-    ):
-        if phrase not in text:
-            fail(f"{dispatcher}: missing isolated transport element {phrase!r}")
-
-    canonical_temp = Path(tempfile.gettempdir()).resolve()
-    with tempfile.TemporaryDirectory(prefix="zephyr-opencode-dispatch-", dir=canonical_temp) as temporary:
-        root = Path(temporary)
-        fake = root / "opencode"
-        capture = root / "capture"
-        capture.mkdir()
-        fake.write_text(
-            "#!/bin/sh\n"
-            "set -eu\n"
-            'printf "%s\\n" "$@" >"$ZEPHYR_OPENCODE_TEST_CAPTURE/args"\n'
-            'printf "%s\\n" "$HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" >"$ZEPHYR_OPENCODE_TEST_CAPTURE/env"\n'
-            'cp "$XDG_CONFIG_HOME/opencode/opencode.json" "$ZEPHYR_OPENCODE_TEST_CAPTURE/config.json"\n'
-            'cp "$XDG_CONFIG_HOME/opencode/agents/zephyr-dispatch.md" "$ZEPHYR_OPENCODE_TEST_CAPTURE/agent.md"\n'
-            'cat >"$ZEPHYR_OPENCODE_TEST_CAPTURE/prompt"\n'
-            'case "${ZEPHYR_OPENCODE_TEST_MODE:-success}" in\n'
-            '  auth) echo "authentication failed: private diagnostic" >&2; exit 1 ;;\n'
-            '  timeout) trap "" TERM; (trap "" TERM; while :; do sleep 30 & wait "$!"; done) & '
-            'printf "%s\\n" "$!" >>"$ZEPHYR_OPENCODE_TEST_CHILD_PIDS"; wait "$!" ;;\n'
-            'esac\n'
-            "printf '%s\\n' '{\"version\":1,\"run_id\":\"smoke\",\"role\":\"code-reviewer\",\"findings\":[]}'\n",
-            encoding="utf-8",
-        )
-        fake.chmod(0o700)
-        packet = root / "packet.json"
-        packet_bytes = b'{"payload":"' + (b"z" * 230_000) + b'-exact-tail"}'
-        packet.write_bytes(packet_bytes)
-        output = root / "candidate.json"
-        environment = os.environ.copy()
-        environment.update(
-            {
-                "ZEPHYR_OPENCODE_BIN": str(fake),
-                "ZEPHYR_OPENCODE_TEST_CAPTURE": str(capture),
-            }
-        )
-        run = subprocess.run(
-            [
-                "sh",
-                str(dispatcher),
-                "reviewer",
-                "--role",
-                "code-reviewer",
-                "--packet",
-                str(packet),
-                "--output",
-                str(output),
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            env=environment,
-        )
-        if run.returncode != 0:
-            fail(f"OpenCode dispatcher smoke failed: {run.stderr.strip()}")
-        if output.read_text(encoding="utf-8").strip() != '{"version":1,"run_id":"smoke","role":"code-reviewer","findings":[]}':
-            fail("OpenCode dispatcher did not publish the model result")
-        prompt = (capture / "prompt").read_bytes()
-        if prompt.count(packet_bytes) != 1:
-            fail("OpenCode dispatcher did not stream the exact large packet exactly once")
-        args = (capture / "args").read_text(encoding="utf-8")
-        for phrase in ("run", "--pure", "--agent", "zephyr-dispatch", "--dir"):
-            if phrase not in args:
-                fail(f"OpenCode dispatcher invocation is missing {phrase!r}")
-        if '"permission": { "*": "deny" }' not in (capture / "config.json").read_text(encoding="utf-8"):
-            fail("OpenCode dispatcher config does not deny permissions")
-        agent = (capture / "agent.md").read_text(encoding="utf-8")
-        if "mode: primary" not in agent or "'*': deny" not in agent:
-            fail("OpenCode dispatcher transport agent is not isolated")
-
-        request = root / "routing-request.json"
-        request_bytes = b'{"version":1,"run_id":"smoke","candidates":[]}'
-        request.write_bytes(request_bytes)
-        routing_output = root / "routing-result.json"
-        routing_run = subprocess.run(
-            [
-                "sh",
-                str(dispatcher),
-                "routing",
-                "--packet",
-                str(packet),
-                "--request",
-                str(request),
-                "--output",
-                str(routing_output),
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            env=environment,
-        )
-        if routing_run.returncode != 0:
-            fail(f"OpenCode semantic routing dispatcher smoke failed: {routing_run.stderr.strip()}")
-        routing_prompt = (capture / "prompt").read_bytes()
-        if routing_prompt.count(packet_bytes) != 1 or routing_prompt.count(request_bytes) != 1:
-            fail("OpenCode semantic routing dispatcher did not stream exact packet and request blocks")
-
-        routing_failure_output = root / "routing-process-failure.json"
-        routing_failure_environment = environment.copy()
-        routing_failure_environment["ZEPHYR_OPENCODE_TEST_MODE"] = "auth"
-        routing_failure = subprocess.run(
-            [
-                "sh",
-                str(dispatcher),
-                "routing",
-                "--packet",
-                str(packet),
-                "--request",
-                str(request),
-                "--output",
-                str(routing_failure_output),
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            env=routing_failure_environment,
-        )
-        if routing_failure.returncode == 0 or routing_failure_output.exists() or "category=auth" not in routing_failure.stderr:
-            fail("OpenCode routing process failure was not classified safely")
-
-        routing_timeout_output = root / "routing-timeout.json"
-        routing_timeout_pids = root / "routing-timeout-child.pids"
-        routing_timeout_environment = environment.copy()
-        routing_timeout_environment.update(
-            {
-                "ZEPHYR_OPENCODE_TEST_MODE": "timeout",
-                "ZEPHYR_OPENCODE_TEST_CHILD_PIDS": str(routing_timeout_pids),
-                "ZEPHYR_OPENCODE_DISPATCH_TIMEOUT": "1",
-            }
-        )
-        routing_timeout = subprocess.run(
-            [
-                "sh",
-                str(dispatcher),
-                "routing",
-                "--packet",
-                str(packet),
-                "--request",
-                str(request),
-                "--output",
-                str(routing_timeout_output),
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            env=routing_timeout_environment,
-            timeout=15,
-        )
-        if routing_timeout.returncode == 0 or routing_timeout_output.exists() or "category=timeout" not in routing_timeout.stderr:
-            fail(f"OpenCode routing timeout was not bounded safely: {routing_timeout.stderr!r}")
-        for raw_pid in routing_timeout_pids.read_text(encoding="utf-8").splitlines():
-            child_pid = int(raw_pid)
-            for _ in range(20):
-                try:
-                    os.kill(child_pid, 0)
-                except ProcessLookupError:
-                    break
-                time.sleep(0.05)
-            else:
-                fail("OpenCode routing timeout left a TERM-ignoring child process running")
-
-
 def validate_installers() -> None:
     harness_scripts = (
         ROOT / "harnesses/install.sh",
@@ -645,8 +337,7 @@ def validate_installers() -> None:
     )
     cli_uninstaller = ROOT / "harnesses/uninstall-cli.sh"
     bootstrap = ROOT / "harnesses/bootstrap.sh"
-    opencode_sync = ROOT / "harnesses/opencode/sync-agents.sh"
-    scripts = (*harness_scripts, cli_uninstaller, bootstrap, opencode_sync)
+    scripts = (*harness_scripts, cli_uninstaller, bootstrap)
     for path in scripts:
         result = subprocess.run(
             ["sh", "-n", str(path)],
@@ -664,14 +355,8 @@ def validate_installers() -> None:
     for path in harness_scripts:
         text = path.read_text(encoding="utf-8")
         for phrase in (
-            "--codex",
-            "--claude",
-            "--opencode",
-            "--all",
+        
             "ZEPHYR_CODEX_SKILLS_DIR",
-            "ZEPHYR_CLAUDE_SKILLS_DIR",
-            "ZEPHYR_OPENCODE_SKILLS_DIR",
-            "harnesses/opencode/dispatch.sh",
             "references/agents",
             "references/assets.sha256",
             "assets.sha256",
@@ -705,7 +390,7 @@ def validate_installers() -> None:
         "ZEPHYR_REPOSITORY_URL",
         "ZEPHYR_REF",
         "mktemp -d",
-        '"install-$surface"',
+        "install",
         '"$temporary_parent"/zephyr-bootstrap.*',
     ):
         if phrase not in bootstrap_text:
@@ -756,40 +441,22 @@ def validate_installers() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for phrase in (
         "make update",
-        "make update-claude",
-        "make update-opencode",
-        "make update-all",
         "make uninstall-skill",
         "make uninstall-cli",
-        "make install-codex",
-        "make install-claude",
-        "make install-opencode",
-        "make install-all",
+        "make install",
     ):
         if phrase not in readme:
             fail(f"README is missing harness installation instruction {phrase!r}")
 
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     for phrase in (
-        "update: update-codex",
-        "update-codex:",
-        "update-claude:",
-        "update-opencode:",
-        "update-all:",
+        "update:",
         "uninstall:",
         "uninstall-skill:",
         "uninstall-cli:",
         "install-cli:",
-        "install-codex:",
-        "install-claude:",
-        "install-opencode:",
-        "install-skill-opencode:",
-        "install-all:",
         "$(MAKE) install",
-        "sh harnesses/update.sh --codex",
-        "sh harnesses/update.sh --claude",
-        "sh harnesses/update.sh --opencode",
-        "sh harnesses/update.sh --all",
+        "sh harnesses/update.sh",
     ):
         if phrase not in makefile:
             fail(f"Makefile is missing update contract {phrase!r}")
@@ -804,12 +471,8 @@ def validate_updater_behavior() -> None:
         root = Path(temporary)
         codex_skills = root / "codex-skills"
         codex_agents = root / "codex-agents"
-        claude_skills = root / "claude-skills"
-        claude_agents = root / "claude-agents"
-        opencode_skills = root / "opencode-skills"
-        opencode_agents = root / "opencode-agents"
         backups = root / "backups"
-        for path in (codex_skills, codex_agents, claude_skills, claude_agents, opencode_skills, opencode_agents, backups):
+        for path in (codex_skills, codex_agents, backups):
             path.mkdir()
 
         environment = os.environ.copy()
@@ -817,15 +480,11 @@ def validate_updater_behavior() -> None:
             {
                 "ZEPHYR_CODEX_SKILLS_DIR": str(codex_skills),
                 "ZEPHYR_CODEX_AGENTS_DIR": str(codex_agents),
-                "ZEPHYR_CLAUDE_SKILLS_DIR": str(claude_skills),
-                "ZEPHYR_CLAUDE_AGENTS_DIR": str(claude_agents),
-                "ZEPHYR_OPENCODE_SKILLS_DIR": str(opencode_skills),
-                "ZEPHYR_OPENCODE_AGENTS_DIR": str(opencode_agents),
                 "ZEPHYR_BACKUP_DIR": str(backups),
             }
         )
         fresh_install = subprocess.run(
-            ["sh", str(ROOT / "harnesses/update.sh"), "--all"],
+            ["sh", str(ROOT / "harnesses/install.sh")],
             check=False,
             capture_output=True,
             text=True,
@@ -833,29 +492,21 @@ def validate_updater_behavior() -> None:
         )
         if fresh_install.returncode != 0:
             fail(f"fresh updater install failed: {fresh_install.stderr.strip()}")
-        if "Пакет harness Zephyr установлен." not in fresh_install.stdout:
+        if "Zephyr для Codex установлен" not in fresh_install.stdout:
             fail("fresh updater install did not report installation")
         if "Zephyr установлен для" in fresh_install.stdout or "/stage/" in fresh_install.stdout:
             fail("fresh updater install exposed internal staging output")
-        if fresh_install.stdout.count("Начните новую сессию harness") != 1:
+        if fresh_install.stdout.count("Начните новую сессию") != 1:
             fail("fresh updater install must print the session restart reminder exactly once")
         if (codex_skills / "zephyr/SKILL.md").read_bytes() != (ROOT / "harnesses/codex/SKILL.md").read_bytes():
             fail("fresh updater install did not publish the Codex skill")
-        if (claude_skills / "zephyr/SKILL.md").read_bytes() != (ROOT / "harnesses/claude-code/SKILL.md").read_bytes():
-            fail("fresh updater install did not publish the Claude skill")
-        if (opencode_skills / "zephyr/SKILL.md").read_bytes() != (ROOT / "harnesses/opencode/SKILL.md").read_bytes():
-            fail("fresh updater install did not publish the OpenCode skill")
 
     with tempfile.TemporaryDirectory(prefix="zephyr-updater-test-", dir=canonical_temp) as temporary:
         root = Path(temporary)
         codex_skills = root / "codex-skills"
         codex_agents = root / "codex-agents"
-        claude_skills = root / "claude-skills"
-        claude_agents = root / "claude-agents"
-        opencode_skills = root / "opencode-skills"
-        opencode_agents = root / "opencode-agents"
         backups = root / "backups"
-        for path in (codex_skills, codex_agents, claude_skills, claude_agents, opencode_skills, opencode_agents, backups):
+        for path in (codex_skills, codex_agents, backups):
             path.mkdir()
 
         environment = os.environ.copy()
@@ -863,16 +514,12 @@ def validate_updater_behavior() -> None:
             {
                 "ZEPHYR_CODEX_SKILLS_DIR": str(codex_skills),
                 "ZEPHYR_CODEX_AGENTS_DIR": str(codex_agents),
-                "ZEPHYR_CLAUDE_SKILLS_DIR": str(claude_skills),
-                "ZEPHYR_CLAUDE_AGENTS_DIR": str(claude_agents),
-                "ZEPHYR_OPENCODE_SKILLS_DIR": str(opencode_skills),
-                "ZEPHYR_OPENCODE_AGENTS_DIR": str(opencode_agents),
                 "ZEPHYR_BACKUP_DIR": str(backups),
             }
         )
 
         install = subprocess.run(
-            ["sh", str(ROOT / "harnesses/install.sh"), "--all"],
+            ["sh", str(ROOT / "harnesses/install.sh")],
             check=False,
             capture_output=True,
             text=True,
@@ -895,11 +542,9 @@ def validate_updater_behavior() -> None:
             manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
         make_installed_skill_older(codex_skills / "zephyr", "harnesses/codex/SKILL.md")
-        make_installed_skill_older(claude_skills / "zephyr", "harnesses/claude-code/SKILL.md")
-        make_installed_skill_older(opencode_skills / "zephyr", "harnesses/opencode/SKILL.md")
 
         update = subprocess.run(
-            ["sh", str(ROOT / "harnesses/update.sh"), "--all"],
+            ["sh", str(ROOT / "harnesses/update.sh")],
             check=False,
             capture_output=True,
             text=True,
@@ -907,23 +552,19 @@ def validate_updater_behavior() -> None:
         )
         if update.returncode != 0:
             fail(f"isolated harness update failed: {update.stderr.strip()}")
-        if "Zephyr установлен для" in update.stdout or "/stage/" in update.stdout:
+        if "Zephyr для Codex установлен" in update.stdout or "/stage/" in update.stdout:
             fail("updater exposed internal staging installation output")
-        if update.stdout.count("Начните новую сессию harness") != 1:
+        if update.stdout.count("Начните новую сессию") != 1:
             fail("updater must print the session restart reminder exactly once")
         if (codex_skills / "zephyr/SKILL.md").read_bytes() != (ROOT / "harnesses/codex/SKILL.md").read_bytes():
             fail("updater did not replace the Codex skill")
-        if (claude_skills / "zephyr/SKILL.md").read_bytes() != (ROOT / "harnesses/claude-code/SKILL.md").read_bytes():
-            fail("updater did not replace the Claude skill")
-        if (opencode_skills / "zephyr/SKILL.md").read_bytes() != (ROOT / "harnesses/opencode/SKILL.md").read_bytes():
-            fail("updater did not replace the OpenCode skill")
         if len(list(backups.glob("zephyr-update.*"))) != 1:
             fail("successful update must retain exactly one backup")
 
         modified_agent = codex_agents / "zephyr-code-reviewer.toml"
         modified_agent.write_text(modified_agent.read_text(encoding="utf-8") + "\n# local edit\n", encoding="utf-8")
         reject = subprocess.run(
-            ["sh", str(ROOT / "harnesses/update.sh"), "--codex"],
+            ["sh", str(ROOT / "harnesses/update.sh")],
             check=False,
             capture_output=True,
             text=True,
@@ -952,7 +593,7 @@ def validate_updater_behavior() -> None:
             }
         )
         install = subprocess.run(
-            ["sh", str(ROOT / "harnesses/install.sh"), "--codex"],
+            ["sh", str(ROOT / "harnesses/install.sh")],
             check=False,
             capture_output=True,
             text=True,
@@ -989,7 +630,7 @@ exec /bin/mv "$@"
             Path(failure_environment["ZEPHYR_FAKE_MV_COUNT"]).unlink(missing_ok=True)
             failure_environment["ZEPHYR_FAKE_MV_FAIL_AT"] = fail_at
             update = subprocess.run(
-                ["sh", str(ROOT / "harnesses/update.sh"), "--codex"],
+                ["sh", str(ROOT / "harnesses/update.sh")],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -999,7 +640,7 @@ exec /bin/mv "$@"
                 fail(f"injected updater failure at mv {fail_at} did not roll back: {update.stderr.strip()}")
 
             verify_restored = subprocess.run(
-                ["sh", str(ROOT / "harnesses/install.sh"), "--codex"],
+                ["sh", str(ROOT / "harnesses/install.sh")],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -1959,7 +1600,7 @@ def validate_codex_output_schemas() -> None:
 
 
 def validate_no_placeholders() -> None:
-    roots = (ROOT / "roles", ROOT / "harnesses", ROOT / ".agents", ROOT / ".codex", ROOT / ".claude")
+    roots = (ROOT / "roles", ROOT / "harnesses", ROOT / ".agents", ROOT / ".codex")
     placeholder_tokens = ("[" + "TODO", "TODO" + ":")
     for base in roots:
         for path in base.rglob("*"):
@@ -1977,9 +1618,6 @@ def main() -> int:
         validate_asset_manifest()
         validate_skills()
         validate_codex_agents()
-        validate_claude_agents()
-        validate_opencode_agents()
-        validate_opencode_dispatcher()
         validate_installers()
         validate_codex_output_schemas()
         validate_codex_dispatcher()
