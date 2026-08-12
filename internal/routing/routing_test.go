@@ -53,18 +53,17 @@ func TestRouteTypeScriptFrontendSelectsSpecialists(t *testing.T) {
 }
 
 func TestRouteSkillChangesSelectAuthoringExpert(t *testing.T) {
-	result, err := Route(mustConfig(t, nil), Input{
-		Mode:         ModeImplementation,
-		ChangedPaths: []string{"frontend/skills/example/SKILL.md", "frontend/skills/example/evals/evals.json"},
-		Signals:      []string{"skill-authoring"},
-		HasChanges:   true,
-	})
-	if err != nil {
-		t.Fatalf("Route: %v", err)
-	}
-	want := []string{config.RoleCodeReviewer, config.RoleSkillAuthoringExpert}
-	if got := decisionRoles(result.Selected); !reflect.DeepEqual(got, want) {
-		t.Fatalf("selected roles = %v, want %v", got, want)
+	for _, path := range []string{"frontend/skills/example/SKILL.md", "AGENTS.md", "services/payments/AGENTS.md", "CLAUDE.md", "frontend/CLAUDE.md"} {
+		t.Run(path, func(t *testing.T) {
+			result, err := Route(mustConfig(t, nil), Input{Mode: ModeImplementation, ChangedPaths: []string{path}, HasChanges: true})
+			if err != nil {
+				t.Fatalf("Route: %v", err)
+			}
+			want := []string{config.RoleCodeReviewer, config.RoleSkillAuthoringExpert}
+			if got := decisionRoles(result.Selected); !reflect.DeepEqual(got, want) {
+				t.Fatalf("selected roles = %v, want %v", got, want)
+			}
+		})
 	}
 }
 

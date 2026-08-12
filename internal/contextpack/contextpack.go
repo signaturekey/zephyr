@@ -760,7 +760,7 @@ func detectRoutingSignals(packet Packet) []string {
 			base == "tsconfig.json" || strings.HasPrefix(base, "tsconfig.")
 		isFrontend := strings.HasSuffix(lower, ".tsx") || strings.HasSuffix(lower, ".jsx") ||
 			strings.HasSuffix(lower, ".css") || strings.HasSuffix(lower, ".scss") || strings.HasSuffix(lower, ".less")
-		isSkill := base == "skill.md" || strings.HasPrefix(lower, "template/") || strings.Contains(lower, "/skills/")
+		isSkill := base == "skill.md" || base == "agents.md" || base == "claude.md" || strings.HasPrefix(lower, "template/") || strings.Contains(lower, "/skills/")
 		pathWithBoundaries := "/" + strings.Trim(lower, "/") + "/"
 		isReliability := strings.Contains(pathWithBoundaries, "/resilience/") || strings.Contains(base, "retry") || strings.Contains(base, "circuit")
 		isMessaging := strings.Contains(pathWithBoundaries, "/kafka/") || strings.Contains(pathWithBoundaries, "/messaging/") ||

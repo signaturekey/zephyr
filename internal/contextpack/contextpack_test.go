@@ -121,6 +121,8 @@ func TestFrontendAndSkillPathsProduceTechnologyAndRoutingSignals(t *testing.T) {
 		"src/api/profile.ts",
 		"src/styles.module.scss",
 		"frontend/skills/example/SKILL.md",
+		"services/payments/AGENTS.md",
+		"frontend/CLAUDE.md",
 	}
 	technologies := detectTechnologies(paths)
 	for _, expected := range []string{"codex-skill", "css", "frontend", "markdown", "typescript"} {

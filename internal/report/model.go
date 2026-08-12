@@ -10,21 +10,22 @@ import (
 const Version = 1
 
 type Scope struct {
-	Mode         string             `json:"mode"`
-	Source       string             `json:"source"`
-	Repository   string             `json:"repository"`
-	Branch       string             `json:"branch,omitempty"`
-	Head         string             `json:"head,omitempty"`
-	BaseRef      string             `json:"base_ref,omitempty"`
-	BaseSHA      string             `json:"base_sha,omitempty"`
-	TargetSHA    string             `json:"target_sha,omitempty"`
-	MergeBase    string             `json:"merge_base,omitempty"`
-	CommitRange  string             `json:"commit_range,omitempty"`
-	ChangedFiles []string           `json:"changed_files"`
-	Plan         string             `json:"plan,omitempty"`
-	PlanHash     string             `json:"plan_hash,omitempty"`
-	Sources      []SourceProvenance `json:"sources"`
-	Stale        bool               `json:"stale"`
+	Mode              string             `json:"mode"`
+	Source            string             `json:"source"`
+	Repository        string             `json:"repository"`
+	Branch            string             `json:"branch,omitempty"`
+	Head              string             `json:"head,omitempty"`
+	BaseRef           string             `json:"base_ref,omitempty"`
+	BaseSHA           string             `json:"base_sha,omitempty"`
+	TargetSHA         string             `json:"target_sha,omitempty"`
+	MergeBase         string             `json:"merge_base,omitempty"`
+	CommitRange       string             `json:"commit_range,omitempty"`
+	ChangedFiles      []string           `json:"changed_files"`
+	Plan              string             `json:"plan,omitempty"`
+	PlanHash          string             `json:"plan_hash,omitempty"`
+	ModelPolicySHA256 string             `json:"model_policy_sha256,omitempty"`
+	Sources           []SourceProvenance `json:"sources"`
+	Stale             bool               `json:"stale"`
 }
 
 type SourceProvenance struct {

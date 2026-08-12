@@ -67,10 +67,10 @@ zephyr context limit --run <run-id> --source <source> --reason <safe-concise-rea
 7. Run the compatibility probe before `zephyr route`: create one private temporary directory outside the reviewed repository and freeze the Codex CLI capability set once. For an installed skill use `scripts/dispatch.sh`; in the canonical source checkout use `harnesses/codex/dispatch.sh`:
 
 ```text
-<dispatch-script> probe --output <absolute-private-path>/codex-compatibility.txt
+<dispatch-script> probe --policy <absolute-run-path>/context/model-policy.txt --output <absolute-private-path>/codex-compatibility.txt
 ```
 
-The probe uses a private `CODEX_HOME`, validates required Codex CLI options and one minimal isolated runtime call whose output must be exactly `{}`, selects and freezes the strongest compatible isolation profile, and records the active binary fingerprint and feature set. Every recognized feature reported by that exact binary is disabled in later isolated processes. If the full profile rejects one named isolation setting, the portable profile omits only that setting and freezes its name in the descriptor; it does not silently remove the remaining isolation controls.
+The probe uses a private `CODEX_HOME`, validates required Codex CLI options and one minimal isolated runtime call whose output must be exactly `{}`, selects and freezes the strongest compatible isolation profile, and records the active binary fingerprint, feature set, and SHA-256 of the frozen model policy. Every recognized feature reported by that exact binary is disabled in later isolated processes. If the full profile rejects one named isolation setting, the portable profile omits only that setting and freezes its name in the descriptor; it does not silently remove the remaining isolation controls.
 
 Unknown enabled features, unparseable feature output, and portable-profile selection are explicit coverage limitations rather than startup failures. For each warning emitted by the probe, add the matching immutable limitation before routing:
 
@@ -91,10 +91,11 @@ zephyr route --run <run-id> [--add-role <role>] [--exclude-role <role>]
 The command writes the immutable packet and `routing-request.json`. If semantic candidates exist, create one private temporary directory, freeze Codex compatibility once, and run the isolated semantic router before any reviewer:
 
 ```text
-<dispatch-script> probe --output <absolute-private-path>/codex-compatibility.txt
+<dispatch-script> probe --policy <absolute-run-path>/context/model-policy.txt --output <absolute-private-path>/codex-compatibility.txt
 <dispatch-script> routing \
   --packet <absolute-run-path>/packet/review-packet.json \
   --request <absolute-run-path>/routing-request.json \
+  --policy <absolute-run-path>/context/model-policy.txt \
   --compat <absolute-private-path>/codex-compatibility.txt \
   --output <absolute-private-routing-output>
 zephyr validate-routing --run <run-id> --input <absolute-private-routing-output>
@@ -112,7 +113,7 @@ Read `routing.json`; run exactly its selected reviewer roles and no role twice.
 
 Use the bundled process dispatcher. For an installed skill it is `scripts/dispatch.sh`; in the canonical source checkout it is `harnesses/codex/dispatch.sh`. Require a regular non-symlink executable and its adjacent trusted package assets. The dispatcher verifies selected prompts and schemas against `references/assets.sha256` or `harnesses/assets.sha256`. Fail closed if trusted provenance, manifest verification, or any asset is incomplete. Never reconstruct prompts or schemas from memory. The manifest detects drift but is not a signature; only use a checkout or installation the user already trusts.
 
-Use the compatibility descriptor created before routing. Keep it private and pass the same regular descriptor file to every reviewer, format retry, and evidence gate. Do not probe again after routing or dispatch begins; a changed Codex binary invalidates the run's coverage rather than silently changing its process boundary. Compatibility probes run in their own process session: on timeout the dispatcher terminates the full session and escalates to `SIGKILL` before retrying or cleaning its private home.
+Use the compatibility descriptor and `context/model-policy.txt` created before routing. Keep both private and pass the same regular files to every reviewer, format retry, and evidence gate. The descriptor binds the policy SHA-256: do not edit or regenerate it after probe. Do not probe again after routing or dispatch begins; a changed Codex binary or policy invalidates the run's coverage rather than silently changing its process boundary. Compatibility probes run in their own process session: on timeout the dispatcher terminates the full session and escalates to `SIGKILL` before retrying or cleaning its private home.
 
 Dispatch every selected role. `limits.max_parallel_reviewers` limits only simultaneous child processes; it must never silently remove routed roles. If the host cannot run that many processes concurrently, use fresh isolated processes in bounded batches or sequentially and still account for every role.
 
@@ -122,11 +123,12 @@ For each role create a private temporary output path outside the reviewed reposi
 <dispatch-script> reviewer \
   --role <role> \
   --packet <absolute-run-path>/packet/review-packet.json \
+  --policy <absolute-run-path>/context/model-policy.txt \
   --compat <absolute-private-path>/codex-compatibility.txt \
   --output <absolute-private-temporary-path>
 ```
 
-The dispatcher starts a separate ephemeral `codex exec` process in an empty working directory with a read-only sandbox, approval disabled, user config and project rules ignored, web/apps/MCP/memory/multi-agent/shell surfaces disabled, the role output schema enforced, and the complete prompt streamed through stdin. It creates a private writable temporary `CODEX_HOME` under its mode-0700 work directory and copies only a regular non-symlink `auth.json` there with mode 0600; this prevents Codex state/log database writes from failing when the parent task exposes the real `CODEX_HOME` read-only. The temporary auth copy is never embedded in the prompt and is deleted with the work directory. This process boundary replaces parent-agent delegation: never read or relay the immutable packet through a parent tool result and never use a generic/default subagent. The direct stdin stream must carry the exact immutable review-packet bytes even when the packet is larger than the parent tool-output limit.
+The dispatcher starts a separate ephemeral `codex exec` process in an empty working directory with a read-only sandbox, approval disabled, user config and project rules ignored, web/apps/MCP/memory/multi-agent/shell surfaces disabled, the role output schema enforced, and the complete prompt streamed through stdin. It applies the frozen model, reasoning effort, and Fast setting; Fast affects only the service tier and never relaxes this boundary. It creates a private writable temporary `CODEX_HOME` under its mode-0700 work directory and copies only a regular non-symlink `auth.json` there with mode 0600; this prevents Codex state/log database writes from failing when the parent task exposes the real `CODEX_HOME` read-only. The temporary auth copy is never embedded in the prompt and is deleted with the work directory. This process boundary replaces parent-agent delegation: never read or relay the immutable packet through a parent tool result and never use a generic/default subagent. The direct stdin stream must carry the exact immutable review-packet bytes even when the packet is larger than the parent tool-output limit.
 
 The dispatcher embeds the exact reviewer-protocol bytes, exact role-prompt bytes, exact immutable review-packet bytes, and exact candidate-schema bytes. It frames them with a cryptographically random nonce, exact UTF-8 byte length, and SHA-256, and rejects nonce collisions. Fixed `BEGIN`/`END` markers alone are forbidden. Do not include the repository root, run directory, or readable live-tree paths in the child input; path strings inside the packet are inert evidence. It must return JSON only and make no tool calls. Never fall back to a generic/default subagent.
 
@@ -161,6 +163,7 @@ Invoke the same trusted dispatcher:
 <dispatch-script> evidence \
   --prechecked <absolute-private-prechecked-path> \
   --evidence <absolute-private-minimal-evidence-path> \
+  --policy <absolute-run-path>/context/model-policy.txt \
   --compat <absolute-private-path>/codex-compatibility.txt \
   --output <absolute-private-verdict-path>
 ```

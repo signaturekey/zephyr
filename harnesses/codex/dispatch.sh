@@ -6,10 +6,10 @@ umask 077
 usage() {
   cat >&2 <<'EOF'
 usage:
-  dispatch.sh probe --output FILE
-  dispatch.sh routing --packet FILE --request FILE --compat FILE --output FILE
-  dispatch.sh reviewer --role ROLE --packet FILE --compat FILE --output FILE [--format-retry]
-  dispatch.sh evidence --prechecked FILE --evidence FILE --compat FILE --output FILE
+  dispatch.sh probe --output FILE [--policy FILE]
+  dispatch.sh routing --packet FILE --request FILE --compat FILE --output FILE [--policy FILE]
+  dispatch.sh reviewer --role ROLE --packet FILE --compat FILE --output FILE [--policy FILE] [--format-retry]
+  dispatch.sh evidence --prechecked FILE --evidence FILE --compat FILE --output FILE [--policy FILE]
 
 probe freezes the Codex CLI compatibility capabilities for one Zephyr run.
 Exact immutable inputs are streamed through stdin and never materialized through the parent agent's tool output.
@@ -31,6 +31,7 @@ evidence=
 compat=
 output=
 format_retry=no
+policy=
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -67,6 +68,11 @@ while [ "$#" -gt 0 ]; do
     --output)
       [ "$#" -ge 2 ] || { usage; exit 2; }
       output=$2
+      shift 2
+      ;;
+    --policy)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      policy=$2
       shift 2
       ;;
     --format-retry)
@@ -146,6 +152,7 @@ verify_asset() {
 case "$kind" in
   probe)
     [ -z "$role" ] && [ -z "$packet" ] && [ -z "$request" ] && [ -z "$prechecked" ] && [ -z "$evidence" ] && [ -z "$compat" ] && [ "$format_retry" = no ] || { usage; exit 2; }
+    effort=high
     ;;
   routing)
     [ -z "$role" ] && [ -n "$packet" ] && [ -n "$request" ] && [ -z "$prechecked" ] && [ -z "$evidence" ] && [ -n "$compat" ] && [ "$format_retry" = no ] || { usage; exit 2; }
@@ -225,6 +232,47 @@ retry_file=$work_dir/retry-directive.txt
 compatibility_features=$work_dir/features.txt
 mkdir -p "$empty_workspace" "$isolated_codex_home"
 chmod 700 "$isolated_codex_home"
+
+execution_model=inherit
+execution_effort=$effort
+execution_fast=false
+execution_policy_sha256=none
+if [ -n "$policy" ]; then
+  require_regular_absolute "$policy" policy
+  if [ "$(sed -n '1p' "$policy")" != zephyr-codex-model-policy-v1 ]; then
+    echo "zephyr codex dispatch: unsupported model policy" >&2
+    exit 1
+  fi
+  case "$kind" in
+    probe) policy_process=probe; policy_role=- ;;
+    routing) policy_process=semantic-router; policy_role=- ;;
+    reviewer) policy_process=reviewer; policy_role=$role ;;
+    evidence) policy_process=evidence-gate; policy_role=- ;;
+  esac
+  policy_entry=$(awk -F '\t' -v process="$policy_process" -v policy_role="$policy_role" '
+    NR == 1 { next }
+    NF != 5 { exit 2 }
+    $1 == process && $2 == policy_role { count++; line = $0 }
+    END { if (count != 1) exit 1; print line }
+  ' "$policy") || {
+    echo "zephyr codex dispatch: malformed or incomplete model policy" >&2
+    exit 1
+  }
+  IFS="$(printf '\t')" read -r policy_process policy_role execution_model execution_effort execution_fast <<EOF
+$policy_entry
+EOF
+  case "$execution_model" in
+    inherit) ;;
+    ''|*' '*|*'\t'*|*'/'*|*'\\'*) echo "zephyr codex dispatch: unsafe model policy model" >&2; exit 1 ;;
+    *) ;;
+  esac
+  case "$execution_effort" in
+    none|low|medium|high|xhigh|max) ;;
+    *) echo "zephyr codex dispatch: unsafe model policy effort" >&2; exit 1 ;;
+  esac
+  case "$execution_fast" in true|false) ;; *) echo "zephyr codex dispatch: unsafe model policy fast value" >&2; exit 1 ;; esac
+  execution_policy_sha256=$(hash_file "$policy")
+fi
 
 if [ -n "${CODEX_HOME:-}" ]; then
   source_codex_home=$CODEX_HOME
@@ -585,13 +633,15 @@ descriptor_field() {
 
 run_codex_profile() {
   codex_profile=$1
-  codex_effort=$2
-  codex_schema=$3
-  codex_input=$4
-  codex_output=$5
-  codex_events=$6
-  codex_stderr=$7
-  codex_timeout=$8
+  codex_model=$2
+  codex_effort=$3
+  codex_fast=$4
+  codex_schema=$5
+  codex_input=$6
+  codex_output=$7
+  codex_events=$8
+  codex_stderr=$9
+  codex_timeout=${10}
 
   set -- "$codex_path" exec \
     --strict-config \
@@ -610,6 +660,15 @@ run_codex_profile() {
     --config 'developer_instructions="Act only as an isolated Zephyr reviewer. Use only the exact blocks in the user prompt. Never call a tool, open a path, use memory, or modify anything. Return JSON only."' \
     --config "model_reasoning_effort=\"$codex_effort\""
 
+  if [ "$codex_model" != inherit ]; then
+    set -- "$@" --model "$codex_model"
+  fi
+  if [ "$codex_fast" = true ]; then
+    set -- "$@" --config 'service_tier="fast"' --enable fast_mode
+  else
+    set -- "$@" --config 'service_tier="default"' --disable fast_mode
+  fi
+
   if [ "$codex_profile" = full ] || [ "$codex_profile" = portable ]; then
     for config_option in \
       'web_search="disabled"' \
@@ -626,7 +685,7 @@ run_codex_profile() {
 
   while IFS='=' read -r feature state; do
     [ -n "$feature" ] || continue
-    if list_contains "$isolated_features" "$feature"; then
+    if [ "$feature" != fast_mode ] && list_contains "$isolated_features" "$feature"; then
       set -- "$@" --disable "$feature"
     fi
   done < "$compatibility_features"
@@ -650,7 +709,7 @@ run_runtime_smoke() {
   smoke_first_failure=
   while :; do
     rm -f -- "$smoke_output" "$smoke_events" "$smoke_stderr"
-    if run_codex_profile "$compatibility_profile" high "$smoke_schema" "$smoke_prompt" "$smoke_output" "$smoke_events" "$smoke_stderr" "$probe_timeout"; then
+    if run_codex_profile "$compatibility_profile" "$execution_model" "$execution_effort" "$execution_fast" "$smoke_schema" "$smoke_prompt" "$smoke_output" "$smoke_events" "$smoke_stderr" "$probe_timeout"; then
       smoke_status=0
     else
       smoke_status=$?
@@ -741,11 +800,12 @@ probe_compatibility() {
 
   descriptor_payload=$work_dir/compatibility-payload.txt
   {
-    printf '%s\n' zephyr-codex-compat-v2
+    printf '%s\n' zephyr-codex-compat-v3
     printf 'binary_sha256=%s\n' "$(hash_file "$codex_path")"
     printf 'version_sha256=%s\n' "$(hash_file "$version_file")"
     printf 'features_sha256=%s\n' "$(hash_file "$compatibility_features")"
     printf 'profile=%s\n' "$compatibility_profile"
+    printf 'model_policy_sha256=%s\n' "$execution_policy_sha256"
     printf 'omitted_config=%s\n' "$compatibility_omitted_config"
     command cat "$compatibility_features"
   } > "$descriptor_payload"
@@ -766,7 +826,7 @@ probe_compatibility() {
 
 load_compatibility() {
   require_regular_absolute "$compat" compatibility
-  if [ "$(sed -n '1p' "$compat")" != zephyr-codex-compat-v2 ]; then
+  if [ "$(sed -n '1p' "$compat")" != zephyr-codex-compat-v3 ]; then
     echo "zephyr codex dispatch: unsupported compatibility descriptor" >&2
     exit 1
   fi
@@ -774,6 +834,7 @@ load_compatibility() {
     || ! expected_version_hash=$(descriptor_field version_sha256 "$compat") \
     || ! expected_features_hash=$(descriptor_field features_sha256 "$compat") \
     || ! compatibility_profile=$(descriptor_field profile "$compat") \
+    || ! expected_policy_hash=$(descriptor_field model_policy_sha256 "$compat") \
     || ! compatibility_omitted_config=$(descriptor_field omitted_config "$compat") \
     || ! expected_descriptor_hash=$(descriptor_field descriptor_sha256 "$compat"); then
     echo "zephyr codex dispatch: malformed compatibility descriptor" >&2
@@ -785,6 +846,15 @@ load_compatibility() {
       exit 1
     fi
   done
+  case "$expected_policy_hash" in
+    none) [ "$execution_policy_sha256" = none ] || { echo "zephyr codex dispatch: model policy changed after compatibility probe" >&2; exit 1; } ;;
+    *)
+      if [ "${#expected_policy_hash}" -ne 64 ] || printf '%s' "$expected_policy_hash" | LC_ALL=C grep -q '[^0-9a-f]' || [ "$execution_policy_sha256" != "$expected_policy_hash" ]; then
+        echo "zephyr codex dispatch: model policy changed after compatibility probe" >&2
+        exit 1
+      fi
+      ;;
+  esac
   case "$compatibility_profile" in
     full)
       [ "$compatibility_omitted_config" = none ] || {
@@ -811,7 +881,7 @@ load_compatibility() {
     exit 1
   fi
   awk -F= '
-    $1 == "zephyr-codex-compat-v2" || $1 == "binary_sha256" || $1 == "version_sha256" || $1 == "features_sha256" || $1 == "profile" || $1 == "omitted_config" || $1 == "descriptor_sha256" { next }
+    $1 == "zephyr-codex-compat-v3" || $1 == "binary_sha256" || $1 == "version_sha256" || $1 == "features_sha256" || $1 == "profile" || $1 == "model_policy_sha256" || $1 == "omitted_config" || $1 == "descriptor_sha256" { next }
     $1 !~ /^[a-z0-9_]+$/ || $2 !~ /^(true|false)$/ || NF != 2 { exit 1 }
     seen[$1]++ { exit 1 }
     { print $0 }
@@ -903,7 +973,7 @@ else
 fi
 
 invoke_codex() {
-  run_codex_profile "$compatibility_profile" "$effort" "$schema_path" "$prompt_file" "$last_message" "$events_file" "$stderr_file" "$dispatch_timeout"
+  run_codex_profile "$compatibility_profile" "$execution_model" "$execution_effort" "$execution_fast" "$schema_path" "$prompt_file" "$last_message" "$events_file" "$stderr_file" "$dispatch_timeout"
 }
 
 attempt=1

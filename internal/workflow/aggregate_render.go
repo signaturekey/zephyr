@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -77,6 +78,15 @@ func (service *Service) Aggregate(ctx context.Context, runID string) (result Agg
 	if err != nil {
 		return result, err
 	}
+	modelPolicyPath, err := service.store.ArtifactPath(manifest.ID, "context", "model-policy.txt")
+	if err != nil {
+		return result, err
+	}
+	modelPolicyBytes, err := os.ReadFile(modelPolicyPath)
+	if err != nil {
+		return result, fmt.Errorf("read frozen model policy: %w", err)
+	}
+	modelPolicySHA256 := fmt.Sprintf("%x", sha256.Sum256(modelPolicyBytes))
 	candidates, err := artifact[evidence.CandidateSet](service, manifest, "evidence", "prechecked.json")
 	if err != nil {
 		return result, err
@@ -147,8 +157,9 @@ func (service *Service) Aggregate(ctx context.Context, runID string) (result Agg
 				}
 				return ""
 			}(),
-			Sources: provenance,
-			Stale:   staleness.Stale,
+			Sources:           provenance,
+			Stale:             staleness.Stale,
+			ModelPolicySHA256: modelPolicySHA256,
 		},
 		Routing:         reportRouting(routeResult, cfg),
 		Candidates:      candidates,
@@ -332,6 +343,7 @@ func (service *Service) Inspect(ctx context.Context, runID string) (InspectResul
 	}{
 		{&result.Artifacts.Snapshot, []string{"git", "snapshot.json"}},
 		{&result.Artifacts.Capabilities, []string{"context", "capabilities.json"}},
+		{&result.Artifacts.ModelPolicy, []string{"context", "model-policy.txt"}},
 		{&result.Artifacts.Packet, []string{"packet", "review-packet.json"}},
 		{&result.Artifacts.RoutingRequest, []string{"routing-request.json"}},
 		{&result.Artifacts.Routing, []string{"routing.json"}},

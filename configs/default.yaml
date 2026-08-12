@@ -3,6 +3,50 @@ version: 1
 profile: standard
 language: auto
 
+model_policy:
+  default:
+    model: gpt-5.6-terra
+    effort: medium
+    fast: false
+  stages:
+    probe:
+      model: gpt-5.6-luna
+      effort: low
+      fast: true
+    semantic_router:
+      model: gpt-5.6-terra
+      effort: low
+    reviewers:
+      roles:
+        code-reviewer: {}
+        architect-reviewer:
+          model: gpt-5.6-sol
+          effort: high
+        golang-expert: {}
+        typescript-expert: {}
+        frontend-expert: {}
+        reliability-expert:
+          model: gpt-5.6-sol
+        messaging-expert:
+          model: gpt-5.6-sol
+        infrastructure-expert:
+          model: gpt-5.6-sol
+        storage-expert:
+          model: gpt-5.6-sol
+        security-auditor:
+          model: gpt-5.6-sol
+          effort: high
+        sql-expert:
+          model: gpt-5.6-sol
+        contract-reviewer: {}
+        qa-expert:
+          effort: low
+        code-simplifier:
+          effort: low
+    evidence_gate:
+      model: gpt-5.6-sol
+      effort: xhigh
+
 limits:
   max_parallel_reviewers: 8
   max_roles_standard: 15
@@ -52,7 +96,17 @@ routing:
       paths: ["**/*.tsx", "**/*.jsx", "**/*.css", "**/*.scss", "**/*.less"]
     add_roles: ["frontend-expert"]
   - when:
-      paths: ["SKILL.md", "**/SKILL.md", "**/skills/**", "template/**"]
+      paths:
+        [
+          "SKILL.md",
+          "**/SKILL.md",
+          "AGENTS.md",
+          "**/AGENTS.md",
+          "CLAUDE.md",
+          "**/CLAUDE.md",
+          "**/skills/**",
+          "template/**",
+        ]
     add_roles: ["skill-authoring-expert"]
   - when:
       paths: ["**/resilience/**", "**/*retry*.*", "**/*circuit*.*"]
@@ -90,11 +144,9 @@ routing:
   - when:
       paths: ["brief/**", "**/openapi/**", "**/*.proto", "**/*.pb.go"]
     add_roles: ["contract-reviewer"]
-
   - when:
       signals: ["sql"]
     add_roles: ["sql-expert"]
-
   - when:
       signals: ["contract"]
     add_roles: ["contract-reviewer"]
