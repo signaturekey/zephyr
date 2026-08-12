@@ -377,11 +377,7 @@ run_with_timeout() {
   else
     command_status=$?
   fi
-<<<<<<< HEAD
-  if [ -f "$watchdog_sleep_file" ]; then
-=======
   if [ -s "$watchdog_sleep_file" ]; then
->>>>>>> origin/main
     watchdog_sleep_pid=$(sed -n '1p' "$watchdog_sleep_file")
     kill "$watchdog_sleep_pid" 2>/dev/null || :
   fi
@@ -907,40 +903,7 @@ else
 fi
 
 invoke_codex() {
-<<<<<<< HEAD
-  set -- "$codex_path" exec \
-    --strict-config \
-    --ignore-user-config \
-    --ignore-rules \
-    --ephemeral \
-    --skip-git-repo-check \
-    --sandbox read-only \
-    --cd "$empty_workspace" \
-    --color never \
-    --json \
-    --output-schema "$schema_path" \
-    --output-last-message "$last_message" \
-    --config 'approval_policy="never"' \
-    --config 'web_search="disabled"' \
-    --config 'include_apps_instructions=false' \
-    --config 'include_environment_context=false' \
-    --config 'allow_login_shell=false' \
-    --config 'mcp_servers={}' \
-    --config 'apps={ _default = { enabled = false, destructive_enabled = false, open_world_enabled = false } }' \
-    --config 'memories={ use_memories = false, generate_memories = false, dedicated_tools = false }' \
-    --config 'developer_instructions="Act only as an isolated Zephyr routing or review process. Use only the exact blocks in the user prompt. Never call a tool, open a path, use memory, or modify anything. Return JSON only."' \
-    --config "model_reasoning_effort=\"$effort\""
-  while IFS='=' read -r feature state; do
-    if list_contains "$isolated_features" "$feature"; then
-      set -- "$@" --disable "$feature"
-    fi
-  done < "$compatibility_features"
-  set -- "$@" -
-  run_with_timeout "$dispatch_timeout" "$events_file" "$stderr_file" "$prompt_file" \
-    env HOME="$isolated_codex_home" CODEX_HOME="$isolated_codex_home" "$@"
-=======
   run_codex_profile "$compatibility_profile" "$effort" "$schema_path" "$prompt_file" "$last_message" "$events_file" "$stderr_file" "$dispatch_timeout"
->>>>>>> origin/main
 }
 
 attempt=1

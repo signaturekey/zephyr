@@ -474,7 +474,7 @@ func SnapshotInstructions(repoRoot string, allowed []string, maximum int64, poli
 }
 
 func InstructionCandidates(changedFiles []string) []string {
-	set := map[string]struct{}{"AGENTS.md": {}, "CLAUDE.md": {}}
+	set := map[string]struct{}{"AGENTS.md": {}}
 	for _, changed := range changedFiles {
 		clean := path.Clean(filepath.ToSlash(changed))
 		if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(clean) {
@@ -483,7 +483,6 @@ func InstructionCandidates(changedFiles []string) []string {
 		dir := path.Dir(clean)
 		for dir != "." && dir != "/" {
 			set[path.Join(dir, "AGENTS.md")] = struct{}{}
-			set[path.Join(dir, "CLAUDE.md")] = struct{}{}
 			dir = path.Dir(dir)
 		}
 	}

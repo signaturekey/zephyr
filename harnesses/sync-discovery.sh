@@ -32,19 +32,14 @@ sync_file() {
 
 sync_file "$repo_root/harnesses/codex/discovery/SKILL.md" "$repo_root/.agents/skills/zephyr/SKILL.md"
 sync_file "$repo_root/harnesses/codex/discovery/agents/openai.yaml" "$repo_root/.agents/skills/zephyr/agents/openai.yaml"
-sync_file "$repo_root/harnesses/claude-code/discovery/SKILL.md" "$repo_root/.claude/skills/zephyr/SKILL.md"
 
 for source_file in "$repo_root"/harnesses/codex/agents/zephyr-*.toml; do
   sync_file "$source_file" "$repo_root/.codex/agents/${source_file##*/}"
-done
-
-for source_file in "$repo_root"/harnesses/claude-code/agents/zephyr-*.md; do
-  sync_file "$source_file" "$repo_root/.claude/agents/${source_file##*/}"
 done
 
 if [ "$mode" = check ]; then
   exit "$status"
 fi
 
-echo "Файлы discovery Zephyr для Codex и Claude синхронизированы."
+echo "Файлы discovery Zephyr для Codex синхронизированы."
 echo "Перезапустите клиентскую сессию, если каталог её agents или skills был создан после запуска сессии."

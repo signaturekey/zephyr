@@ -7,16 +7,11 @@ import (
 	"testing"
 )
 
-func TestInstallAll(t *testing.T) {
+func TestInstallCodex(t *testing.T) {
 	root := resolvedTempDir(t)
 	result, err := Install(Options{
-		Surface:           SurfaceAll,
-		CodexSkillsDir:    filepath.Join(root, "codex-skills"),
-		CodexAgentsDir:    filepath.Join(root, "codex-agents"),
-		ClaudeSkillsDir:   filepath.Join(root, "claude-skills"),
-		ClaudeAgentsDir:   filepath.Join(root, "claude-agents"),
-		OpenCodeSkillsDir: filepath.Join(root, "opencode-skills"),
-		OpenCodeAgentsDir: filepath.Join(root, "opencode-agents"),
+		CodexSkillsDir: filepath.Join(root, "codex-skills"),
+		CodexAgentsDir: filepath.Join(root, "codex-agents"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -27,10 +22,8 @@ func TestInstallAll(t *testing.T) {
 	for _, path := range []string{
 		filepath.Join(root, "codex-skills", "zephyr", "SKILL.md"),
 		filepath.Join(root, "codex-skills", "zephyr", "scripts", "dispatch.sh"),
-		filepath.Join(root, "claude-skills", "zephyr", "SKILL.md"),
-		filepath.Join(root, "opencode-skills", "zephyr", "SKILL.md"),
-		filepath.Join(root, "opencode-skills", "zephyr", "scripts", "dispatch.sh"),
-		filepath.Join(root, "opencode-agents", "zephyr-code-reviewer.md"),
+		filepath.Join(root, "codex-skills", "zephyr", "agents", "openai.yaml"),
+		filepath.Join(root, "codex-agents", "zephyr-code-reviewer.toml"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("installed file %s: %v", path, err)
@@ -48,7 +41,6 @@ func TestInstallRejectsDifferentFileBeforeWriting(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := Install(Options{
-		Surface:        SurfaceCodex,
 		CodexSkillsDir: filepath.Join(root, "codex-skills"),
 		CodexAgentsDir: filepath.Join(root, "codex-agents"),
 	})
@@ -60,12 +52,11 @@ func TestInstallRejectsDifferentFileBeforeWriting(t *testing.T) {
 	}
 }
 
-func TestUninstallOpenCode(t *testing.T) {
+func TestUninstallCodex(t *testing.T) {
 	root := resolvedTempDir(t)
 	options := Options{
-		Surface:           SurfaceOpenCode,
-		OpenCodeSkillsDir: filepath.Join(root, "opencode-skills"),
-		OpenCodeAgentsDir: filepath.Join(root, "opencode-agents"),
+		CodexSkillsDir: filepath.Join(root, "codex-skills"),
+		CodexAgentsDir: filepath.Join(root, "codex-agents"),
 	}
 	if _, err := Install(options); err != nil {
 		t.Fatal(err)
@@ -78,8 +69,8 @@ func TestUninstallOpenCode(t *testing.T) {
 		t.Fatal("uninstall removed no files")
 	}
 	for _, path := range []string{
-		filepath.Join(root, "opencode-skills", "zephyr", "SKILL.md"),
-		filepath.Join(root, "opencode-agents", "zephyr-code-reviewer.md"),
+		filepath.Join(root, "codex-skills", "zephyr", "SKILL.md"),
+		filepath.Join(root, "codex-agents", "zephyr-code-reviewer.toml"),
 	} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("uninstalled file still exists %s: %v", path, err)
@@ -90,7 +81,6 @@ func TestUninstallOpenCode(t *testing.T) {
 func TestUninstallAcceptsHistoricalInstalledManifest(t *testing.T) {
 	root := resolvedTempDir(t)
 	options := Options{
-		Surface:        SurfaceCodex,
 		CodexSkillsDir: filepath.Join(root, "codex-skills"),
 		CodexAgentsDir: filepath.Join(root, "codex-agents"),
 	}
@@ -117,31 +107,6 @@ func TestUninstallAcceptsHistoricalInstalledManifest(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "codex-skills", "zephyr", "SKILL.md")); !os.IsNotExist(err) {
 		t.Fatalf("historical skill was not removed: %v", err)
-	}
-}
-
-func TestOpenCodeAgentDefinition(t *testing.T) {
-	root := resolvedTempDir(t)
-	options := Options{
-		Surface:           SurfaceOpenCode,
-		OpenCodeSkillsDir: filepath.Join(root, "opencode-skills"),
-		OpenCodeAgentsDir: filepath.Join(root, "opencode-agents"),
-	}
-	if _, err := Install(options); err != nil {
-		t.Fatal(err)
-	}
-	content, err := os.ReadFile(filepath.Join(root, "opencode-agents", "zephyr-code-reviewer.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, expected := range []string{
-		"mode: subagent",
-		"permission:\n  '*': deny",
-		"# Role: code-reviewer",
-	} {
-		if !strings.Contains(string(content), expected) {
-			t.Fatalf("OpenCode agent definition is missing %q", expected)
-		}
 	}
 }
 

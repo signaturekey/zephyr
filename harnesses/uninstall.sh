@@ -4,7 +4,7 @@ set -eu
 
 usage() {
   cat >&2 <<'EOF'
-usage: sh harnesses/uninstall.sh --codex|--claude|--opencode|--all
+usage: sh harnesses/uninstall.sh
 
 Removes only files verified by the manifest installed with the Zephyr harness
 package. Modified or unrelated files make the uninstall fail before deletion.
@@ -12,25 +12,7 @@ EOF
 }
 
 case "${1:-}" in
-  --codex)
-    uninstall_codex=yes
-    uninstall_claude=no
-    uninstall_opencode=no
-    ;;
-  --claude)
-    uninstall_codex=no
-    uninstall_claude=yes
-    uninstall_opencode=no
-    ;;
-  --opencode)
-    uninstall_codex=no
-    uninstall_claude=no
-    uninstall_opencode=yes
-    ;;
-  --all)
-    uninstall_codex=yes
-    uninstall_claude=yes
-    uninstall_opencode=yes
+  '')
     ;;
   --help|-h)
     usage
@@ -42,7 +24,7 @@ case "${1:-}" in
     ;;
 esac
 
-if [ "$#" -ne 1 ]; then
+if [ "$#" -ne 0 ]; then
   usage
   exit 2
 fi
@@ -57,10 +39,6 @@ fi
 
 codex_skills_dir=${ZEPHYR_CODEX_SKILLS_DIR:-"$HOME/.agents/skills"}
 codex_agents_dir=${ZEPHYR_CODEX_AGENTS_DIR:-"$HOME/.codex/agents"}
-claude_skills_dir=${ZEPHYR_CLAUDE_SKILLS_DIR:-"$HOME/.claude/skills"}
-claude_agents_dir=${ZEPHYR_CLAUDE_AGENTS_DIR:-"$HOME/.claude/agents"}
-opencode_skills_dir=${ZEPHYR_OPENCODE_SKILLS_DIR:-"$HOME/.config/opencode/skills"}
-opencode_agents_dir=${ZEPHYR_OPENCODE_AGENTS_DIR:-"$HOME/.config/opencode/agents"}
 
 require_absolute() {
   absolute_path=$1
@@ -233,10 +211,9 @@ remove_empty_dir() {
 
 verify_asset_manifest
 
-if [ "$uninstall_codex" = yes ]; then
-  require_absolute "$codex_skills_dir"
-  require_absolute "$codex_agents_dir"
-  codex_skill_root="$codex_skills_dir/zephyr"
+require_absolute "$codex_skills_dir"
+require_absolute "$codex_agents_dir"
+codex_skill_root="$codex_skills_dir/zephyr"
   prepare_installed_manifest "$codex_skill_root" "$repo_root/harnesses/codex/SKILL.md" "$codex_skill_root/SKILL.md"
 
   check_removal "$repo_root/harnesses/codex/SKILL.md" "$codex_skill_root/SKILL.md"
@@ -253,50 +230,6 @@ if [ "$uninstall_codex" = yes ]; then
     check_removal "$source_path" "$codex_agents_dir/${source_path##*/}"
     check_removal "$source_path" "$codex_skill_root/references/agents/${source_path##*/}"
   done
-fi
-
-if [ "$uninstall_claude" = yes ]; then
-  require_absolute "$claude_skills_dir"
-  require_absolute "$claude_agents_dir"
-  claude_skill_root="$claude_skills_dir/zephyr"
-  prepare_installed_manifest "$claude_skill_root" "$repo_root/harnesses/claude-code/SKILL.md" "$claude_skill_root/SKILL.md"
-
-  check_removal "$repo_root/harnesses/claude-code/SKILL.md" "$claude_skill_root/SKILL.md"
-  check_removal "$repo_root/harnesses/assets.sha256" "$claude_skill_root/references/assets.sha256"
-  for source_path in "$repo_root"/roles/*.md; do
-    check_removal "$source_path" "$claude_skill_root/references/roles/${source_path##*/}"
-  done
-  for source_path in "$repo_root"/schemas/*.json; do
-    check_removal "$source_path" "$claude_skill_root/references/schemas/${source_path##*/}"
-  done
-  for source_path in "$repo_root"/harnesses/claude-code/agents/zephyr-*.md; do
-    check_removal "$source_path" "$claude_agents_dir/${source_path##*/}"
-    check_removal "$source_path" "$claude_skill_root/references/agents/${source_path##*/}"
-  done
-fi
-
-if [ "$uninstall_opencode" = yes ]; then
-  require_absolute "$opencode_skills_dir"
-  require_absolute "$opencode_agents_dir"
-  opencode_skill_root="$opencode_skills_dir/zephyr"
-  prepare_installed_manifest "$opencode_skill_root" "$repo_root/harnesses/opencode/SKILL.md" "$opencode_skill_root/SKILL.md"
-
-  check_removal "$repo_root/harnesses/opencode/SKILL.md" "$opencode_skill_root/SKILL.md"
-  check_removal "$repo_root/harnesses/opencode/dispatch.sh" "$opencode_skill_root/scripts/dispatch.sh"
-  check_removal "$repo_root/harnesses/assets.sha256" "$opencode_skill_root/references/assets.sha256"
-  for source_path in "$repo_root"/roles/*.md; do
-    check_removal "$source_path" "$opencode_skill_root/references/roles/${source_path##*/}"
-  done
-  for source_path in "$repo_root"/schemas/*.json; do
-    check_removal "$source_path" "$opencode_skill_root/references/schemas/${source_path##*/}"
-  done
-  for source_path in "$repo_root"/harnesses/opencode/agents/zephyr-*.md; do
-    check_removal "$source_path" "$opencode_agents_dir/${source_path##*/}"
-    check_removal "$source_path" "$opencode_skill_root/references/agents/${source_path##*/}"
-  done
-fi
-
-if [ "$uninstall_codex" = yes ]; then
   for source_path in "$repo_root"/harnesses/codex/agents/zephyr-*.toml; do
     remove_file "$codex_agents_dir/${source_path##*/}"
     remove_file "$codex_skill_root/references/agents/${source_path##*/}"
@@ -318,51 +251,6 @@ if [ "$uninstall_codex" = yes ]; then
   remove_empty_dir "$codex_skill_root/agents"
   remove_empty_dir "$codex_skill_root/scripts"
   remove_empty_dir "$codex_skill_root"
-  echo "Удалены соответствующие файлы Zephyr для Codex."
-fi
-
-if [ "$uninstall_claude" = yes ]; then
-  for source_path in "$repo_root"/harnesses/claude-code/agents/zephyr-*.md; do
-    remove_file "$claude_agents_dir/${source_path##*/}"
-    remove_file "$claude_skill_root/references/agents/${source_path##*/}"
-  done
-  for source_path in "$repo_root"/roles/*.md; do
-    remove_file "$claude_skill_root/references/roles/${source_path##*/}"
-  done
-  for source_path in "$repo_root"/schemas/*.json; do
-    remove_file "$claude_skill_root/references/schemas/${source_path##*/}"
-  done
-  remove_file "$claude_skill_root/references/assets.sha256"
-  remove_file "$claude_skill_root/SKILL.md"
-  remove_empty_dir "$claude_skill_root/references/roles"
-  remove_empty_dir "$claude_skill_root/references/schemas"
-  remove_empty_dir "$claude_skill_root/references/agents"
-  remove_empty_dir "$claude_skill_root/references"
-  remove_empty_dir "$claude_skill_root"
-  echo "Удалены соответствующие файлы Zephyr для Claude Code."
-fi
-
-if [ "$uninstall_opencode" = yes ]; then
-  for source_path in "$repo_root"/harnesses/opencode/agents/zephyr-*.md; do
-    remove_file "$opencode_agents_dir/${source_path##*/}"
-    remove_file "$opencode_skill_root/references/agents/${source_path##*/}"
-  done
-  for source_path in "$repo_root"/roles/*.md; do
-    remove_file "$opencode_skill_root/references/roles/${source_path##*/}"
-  done
-  for source_path in "$repo_root"/schemas/*.json; do
-    remove_file "$opencode_skill_root/references/schemas/${source_path##*/}"
-  done
-  remove_file "$opencode_skill_root/references/assets.sha256"
-  remove_file "$opencode_skill_root/scripts/dispatch.sh"
-  remove_file "$opencode_skill_root/SKILL.md"
-  remove_empty_dir "$opencode_skill_root/references/roles"
-  remove_empty_dir "$opencode_skill_root/references/schemas"
-  remove_empty_dir "$opencode_skill_root/references/agents"
-  remove_empty_dir "$opencode_skill_root/references"
-  remove_empty_dir "$opencode_skill_root/scripts"
-  remove_empty_dir "$opencode_skill_root"
-  echo "Удалены соответствующие файлы Zephyr для OpenCode."
-fi
+echo "Удалены соответствующие файлы Zephyr для Codex."
 
 echo "Начните новую сессию harness, чтобы она забыла удалённые определения skill и agents."

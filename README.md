@@ -5,7 +5,7 @@ Zephyr — локальный read-only ревьювер инженерных п
 ревьюеров и оставляет в итоговом отчёте только замечания с проверяемыми
 доказательствами.
 
-Zephyr работает через Codex, Claude Code или OpenCode, не вызывает LLM API
+Zephyr работает через Codex, не вызывает LLM API
 напрямую и не изменяет проверяемый репозиторий.
 
 <a id="navigation"></a>
@@ -83,26 +83,18 @@ Zephyr состоит из двух частей:
 
 - system Git в `PATH`;
 - Go 1.24+ и `make` для установки из исходников;
-- Codex, Claude Code или OpenCode для запуска настоящего AI-review.
+- Codex для запуска настоящего AI-review.
 
 ### Установка для Codex
 
 ```bash
 git clone https://github.com/signaturekey/zephyr.git
 cd zephyr
-make install-codex
+make install
 ```
 
 После установки откройте новую сессию Codex, чтобы она увидела skill и
 reviewer-роли.
-
-Для других harness используйте одну из команд:
-
-```bash
-make install-claude
-make install-opencode
-make install-all
-```
 
 Проверить CLI:
 
@@ -117,23 +109,20 @@ zephyr --help
 Обновить CLI и нужный harness:
 
 ```bash
-make update-codex
-make update-claude
-make update-opencode
-make update-all
+make update
 ```
 
 Удалить Zephyr:
 
 ```bash
-make uninstall        # CLI и все harness-пакеты
+make uninstall        # CLI и пакет Codex
 make uninstall-skill  # только skills и reviewer definitions
 make uninstall-cli    # только binary
 ```
 
 Installer и updater не перезаписывают отличающиеся пользовательские файлы без
 проверки. После установки, обновления или удаления skill откройте новую сессию
-выбранного harness.
+Codex.
 
 ### Первое ревью
 
@@ -404,8 +393,7 @@ Reviewer получает только role prompt, immutable packet и output s
 
 - Zephyr находится в активной разработке; перед публикацией результата сверяйте
   текущие test и validation outputs.
-- Codex и OpenCode используют отдельные process boundaries. Полная изоляция
-  Claude Code пока не подтверждена end-to-end.
+- Codex использует отдельную process boundary; static checks не доказывают live model dispatch.
 - OS-level недоступность repository root для reviewer-а не заявляется как
   доказанная на всех harness.
 - Static harness tests не доказывают реальный MCP discovery и model dispatch.

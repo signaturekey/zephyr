@@ -50,16 +50,14 @@ type runtime struct {
 }
 
 type HarnessCmd struct {
-	Install   HarnessInstallCmd   `cmd:"" help:"Установить встроенные ресурсы Zephyr в Codex, Claude Code, OpenCode или все harness."`
-	Uninstall HarnessUninstallCmd `cmd:"" help:"Удалить встроенные ресурсы Zephyr из Codex, Claude Code или OpenCode."`
+	Install   HarnessInstallCmd   `cmd:"" help:"Установить встроенные ресурсы Zephyr."`
+	Uninstall HarnessUninstallCmd `cmd:"" help:"Удалить встроенные ресурсы Zephyr."`
 }
 
-type HarnessInstallCmd struct {
-	Surface string `arg:"" required:"" enum:"codex,claude,opencode,all" help:"Целевой harness: codex, claude, opencode или all."`
-}
+type HarnessInstallCmd struct{}
 
 func (command *HarnessInstallCmd) Run(app *runtime) error {
-	options, err := harnessinstall.OptionsFromEnvironment(harnessinstall.Surface(command.Surface))
+	options, err := harnessinstall.OptionsFromEnvironment()
 	if err != nil {
 		return err
 	}
@@ -70,12 +68,10 @@ func (command *HarnessInstallCmd) Run(app *runtime) error {
 	return emit(app.stdout, result)
 }
 
-type HarnessUninstallCmd struct {
-	Surface string `arg:"" required:"" enum:"codex,claude,opencode,all" help:"Целевой harness: codex, claude, opencode или all."`
-}
+type HarnessUninstallCmd struct{}
 
 func (command *HarnessUninstallCmd) Run(app *runtime) error {
-	options, err := harnessinstall.OptionsFromEnvironment(harnessinstall.Surface(command.Surface))
+	options, err := harnessinstall.OptionsFromEnvironment()
 	if err != nil {
 		return err
 	}
@@ -94,7 +90,7 @@ func runMain(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var cli CLI
 	parser, err := kong.New(&cli,
 		kong.Name("zephyr"),
-		kong.Description("Локальное read-only ядро ревью с проверкой доказательств для Codex App, Claude Code и OpenCode."),
+		kong.Description("Локальное read-only ядро ревью с проверкой доказательств для Codex."),
 		kong.UsageOnError(),
 		kong.Writers(stdout, stderr),
 	)
