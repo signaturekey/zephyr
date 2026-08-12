@@ -377,7 +377,11 @@ run_with_timeout() {
   else
     command_status=$?
   fi
+<<<<<<< HEAD
   if [ -f "$watchdog_sleep_file" ]; then
+=======
+  if [ -s "$watchdog_sleep_file" ]; then
+>>>>>>> origin/main
     watchdog_sleep_pid=$(sed -n '1p' "$watchdog_sleep_file")
     kill "$watchdog_sleep_pid" 2>/dev/null || :
   fi
@@ -429,8 +433,9 @@ run_probe_command() {
 
 # This is the only feature-policy table. Every recognized feature reported by
 # the probed Codex binary is explicitly disabled in isolated reviewer
-# processes. An enabled feature that is not listed here fails the probe, so a
-# newer Codex release cannot silently widen the reviewer boundary.
+# processes. An enabled feature that is not listed here is allowed with an
+# explicit coverage warning so ordinary Codex version drift does not block a
+# review.
 isolated_features='
 apply_patch_freeform
 apply_patch_streaming_events
@@ -438,6 +443,7 @@ apps
 apps_mcp_path_override
 artifact
 auth_elicitation
+auto_compaction
 browser_use
 browser_use_external
 browser_use_full_cdp_access
@@ -547,6 +553,157 @@ $sought
   esac
 }
 
+classify_config_option() {
+  config_stderr=$1
+  for config_key in \
+    web_search \
+    include_apps_instructions \
+    include_environment_context \
+    allow_login_shell \
+    apps \
+    memories; do
+    if LC_ALL=C grep -F -q -- "$config_key" "$config_stderr"; then
+      printf '%s\n' "$config_key"
+      return 0
+    fi
+  done
+  return 1
+}
+
+descriptor_field() {
+  descriptor_key=$1
+  descriptor_file=$2
+  awk -F= -v key="$descriptor_key" '
+    index($0, key "=") == 1 {
+      value = substr($0, length(key) + 2)
+      count++
+    }
+    END {
+      if (count != 1) {
+        exit 1
+      }
+      print value
+    }
+  ' "$descriptor_file"
+}
+
+run_codex_profile() {
+  codex_profile=$1
+  codex_effort=$2
+  codex_schema=$3
+  codex_input=$4
+  codex_output=$5
+  codex_events=$6
+  codex_stderr=$7
+  codex_timeout=$8
+
+  set -- "$codex_path" exec \
+    --strict-config \
+    --ignore-user-config \
+    --ignore-rules \
+    --ephemeral \
+    --skip-git-repo-check \
+    --sandbox read-only \
+    --cd "$empty_workspace" \
+    --color never \
+    --json \
+    --output-schema "$codex_schema" \
+    --output-last-message "$codex_output" \
+    --config 'approval_policy="never"' \
+    --config 'mcp_servers={}' \
+    --config 'developer_instructions="Act only as an isolated Zephyr reviewer. Use only the exact blocks in the user prompt. Never call a tool, open a path, use memory, or modify anything. Return JSON only."' \
+    --config "model_reasoning_effort=\"$codex_effort\""
+
+  if [ "$codex_profile" = full ] || [ "$codex_profile" = portable ]; then
+    for config_option in \
+      'web_search="disabled"' \
+      'include_apps_instructions=false' \
+      'include_environment_context=false' \
+      'allow_login_shell=false' \
+      'apps={ _default = { enabled = false, destructive_enabled = false, open_world_enabled = false } }' \
+      'memories={ use_memories = false, generate_memories = false, dedicated_tools = false }'; do
+      if [ "$codex_profile" = full ] || [ "${config_option%%=*}" != "$compatibility_omitted_config" ]; then
+        set -- "$@" --config "$config_option"
+      fi
+    done
+  fi
+
+  while IFS='=' read -r feature state; do
+    [ -n "$feature" ] || continue
+    if list_contains "$isolated_features" "$feature"; then
+      set -- "$@" --disable "$feature"
+    fi
+  done < "$compatibility_features"
+  set -- "$@" -
+
+  run_with_timeout "$codex_timeout" "$codex_events" "$codex_stderr" "$codex_input" "$@"
+}
+
+run_runtime_smoke() {
+  smoke_schema=$work_dir/smoke-schema.json
+  smoke_prompt=$work_dir/smoke-prompt.txt
+  smoke_output=$work_dir/smoke-last-message.json
+  smoke_events=$work_dir/smoke-events.jsonl
+  smoke_stderr=$work_dir/smoke-stderr.log
+  printf '%s\n' '{"type":"object","additionalProperties":false,"required":[],"properties":{}}' > "$smoke_schema"
+  printf '%s\n' 'Return exactly one empty JSON object and do not call tools.' > "$smoke_prompt"
+
+  compatibility_profile=full
+  compatibility_omitted_config=none
+  smoke_attempt_number=1
+  smoke_first_failure=
+  while :; do
+    rm -f -- "$smoke_output" "$smoke_events" "$smoke_stderr"
+    if run_codex_profile "$compatibility_profile" high "$smoke_schema" "$smoke_prompt" "$smoke_output" "$smoke_events" "$smoke_stderr" "$probe_timeout"; then
+      smoke_status=0
+    else
+      smoke_status=$?
+    fi
+    smoke_payload=
+    if [ -f "$smoke_output" ]; then
+      smoke_payload=$(tr -d '[:space:]' < "$smoke_output")
+    fi
+    if [ "$smoke_status" -eq 0 ] && [ "$smoke_payload" = '{}' ]; then
+      return 0
+    fi
+    if [ "$smoke_status" -eq 0 ]; then
+      smoke_status=1
+    fi
+    if [ "$smoke_status" -eq 124 ]; then
+      smoke_category=transport
+    else
+      smoke_category=$(classify_codex_failure "$smoke_stderr")
+    fi
+    smoke_hash=$(hash_file "$smoke_stderr")
+    smoke_bytes=$(wc -c < "$smoke_stderr" | tr -d ' ')
+    smoke_diagnostic="category=$smoke_category status=$smoke_status stderr_sha256=$smoke_hash stderr_bytes=$smoke_bytes"
+
+    if [ "$compatibility_profile" = full ] && [ "$smoke_category" = config ]; then
+      if ! compatibility_omitted_config=$(classify_config_option "$smoke_stderr"); then
+        echo "zephyr codex dispatch: compatibility runtime smoke full failed without a safe portable configuration fallback; $smoke_diagnostic" >&2
+        return 1
+      fi
+      printf '%s\n' 'zephyr codex dispatch: warning: full Codex isolation profile unsupported; portable profile selected' >&2
+      compatibility_profile=portable
+      smoke_attempt_number=1
+      smoke_first_failure=
+      continue
+    fi
+    if [ "$smoke_attempt_number" -eq 1 ] && retryable_failure "$smoke_category"; then
+      smoke_first_failure=$smoke_diagnostic
+      sleep 1
+      smoke_attempt_number=2
+      continue
+    fi
+    if [ -n "$smoke_first_failure" ]; then
+      echo "zephyr codex dispatch: compatibility runtime smoke $compatibility_profile failed after $smoke_attempt_number attempts; first={$smoke_first_failure}; last={$smoke_diagnostic}" >&2
+    else
+      echo "zephyr codex dispatch: compatibility runtime smoke $compatibility_profile failed without retry; $smoke_diagnostic" >&2
+    fi
+    return 1
+  done
+}
+
 probe_compatibility() {
   version_file=$work_dir/codex-version.txt
   version_stderr=$work_dir/codex-version.stderr
@@ -569,26 +726,43 @@ probe_compatibility() {
   awk '
     NF >= 3 && $1 ~ /^[a-z0-9_]+$/ && $NF ~ /^(true|false)$/ { print $1 "=" $NF }
   ' "$features_raw" | LC_ALL=C sort -u > "$compatibility_features"
-  if [ ! -s "$compatibility_features" ]; then
-    echo "zephyr codex dispatch: compatibility probe returned no parseable feature flags" >&2
-    return 1
+
+  feature_raw_count=$(awk 'NF { count++ } END { print count + 0 }' "$features_raw")
+  feature_parsed_count=$(awk 'END { print NR + 0 }' "$compatibility_features")
+  feature_ignored_count=$((feature_raw_count - feature_parsed_count))
+  if [ "$feature_ignored_count" -gt 0 ]; then
+    printf '%s\n' "zephyr codex dispatch: warning: partially unparseable feature output allowed: parsed=$feature_parsed_count ignored=$feature_ignored_count raw_sha256=$(hash_file "$features_raw")" >&2
   fi
 
   while IFS='=' read -r feature state; do
+    [ -n "$feature" ] || continue
     if ! list_contains "$isolated_features" "$feature" && [ "$state" = true ]; then
-      echo "zephyr codex dispatch: compatibility probe found unknown enabled feature" >&2
-      return 1
+      printf '%s\n' "zephyr codex dispatch: warning: unknown enabled feature allowed: $feature" >&2
     fi
   done < "$compatibility_features"
 
-  descriptor=$work_dir/compatibility.txt
+  run_runtime_smoke || return 1
+
+  descriptor_payload=$work_dir/compatibility-payload.txt
   {
-    printf '%s\n' zephyr-codex-compat-v1
+    printf '%s\n' zephyr-codex-compat-v2
     printf 'binary_sha256=%s\n' "$(hash_file "$codex_path")"
     printf 'version_sha256=%s\n' "$(hash_file "$version_file")"
     printf 'features_sha256=%s\n' "$(hash_file "$compatibility_features")"
+    printf 'profile=%s\n' "$compatibility_profile"
+    printf 'omitted_config=%s\n' "$compatibility_omitted_config"
     command cat "$compatibility_features"
-  } > "$descriptor"
+  } > "$descriptor_payload"
+  descriptor=$work_dir/compatibility.txt
+  descriptor_hash=$(hash_file "$descriptor_payload")
+  awk -v descriptor_hash="$descriptor_hash" '
+    /^profile=/ {
+      print
+      print "descriptor_sha256=" descriptor_hash
+      next
+    }
+    { print }
+  ' "$descriptor_payload" > "$descriptor"
   chmod 600 "$descriptor"
   mv "$descriptor" "$output"
   printf '{"kind":"probe","output":"%s"}\n' "$output"
@@ -596,25 +770,52 @@ probe_compatibility() {
 
 load_compatibility() {
   require_regular_absolute "$compat" compatibility
-  if [ "$(sed -n '1p' "$compat")" != zephyr-codex-compat-v1 ]; then
+  if [ "$(sed -n '1p' "$compat")" != zephyr-codex-compat-v2 ]; then
     echo "zephyr codex dispatch: unsupported compatibility descriptor" >&2
     exit 1
   fi
-  expected_binary_hash=$(awk -F= 'NR == 2 && $1 == "binary_sha256" { print $2 }' "$compat")
-  expected_version_hash=$(awk -F= 'NR == 3 && $1 == "version_sha256" { print $2 }' "$compat")
-  expected_features_hash=$(awk -F= 'NR == 4 && $1 == "features_sha256" { print $2 }' "$compat")
-  for expected_hash in "$expected_binary_hash" "$expected_version_hash" "$expected_features_hash"; do
+  if ! expected_binary_hash=$(descriptor_field binary_sha256 "$compat") \
+    || ! expected_version_hash=$(descriptor_field version_sha256 "$compat") \
+    || ! expected_features_hash=$(descriptor_field features_sha256 "$compat") \
+    || ! compatibility_profile=$(descriptor_field profile "$compat") \
+    || ! compatibility_omitted_config=$(descriptor_field omitted_config "$compat") \
+    || ! expected_descriptor_hash=$(descriptor_field descriptor_sha256 "$compat"); then
+    echo "zephyr codex dispatch: malformed compatibility descriptor" >&2
+    exit 1
+  fi
+  for expected_hash in "$expected_binary_hash" "$expected_version_hash" "$expected_features_hash" "$expected_descriptor_hash"; do
     if [ "${#expected_hash}" -ne 64 ] || printf '%s' "$expected_hash" | LC_ALL=C grep -q '[^0-9a-f]'; then
       echo "zephyr codex dispatch: malformed compatibility descriptor" >&2
       exit 1
     fi
   done
+  case "$compatibility_profile" in
+    full)
+      [ "$compatibility_omitted_config" = none ] || {
+        echo "zephyr codex dispatch: malformed compatibility descriptor" >&2
+        exit 1
+      }
+      ;;
+    portable)
+      case "$compatibility_omitted_config" in
+        web_search|include_apps_instructions|include_environment_context|allow_login_shell|apps|memories) ;;
+        *)
+          echo "zephyr codex dispatch: malformed compatibility descriptor" >&2
+          exit 1
+          ;;
+      esac
+      ;;
+    *)
+      echo "zephyr codex dispatch: malformed compatibility descriptor" >&2
+      exit 1
+      ;;
+  esac
   if [ "$(hash_file "$codex_path")" != "$expected_binary_hash" ]; then
     echo "zephyr codex dispatch: Codex binary changed after compatibility probe" >&2
     exit 1
   fi
   awk -F= '
-    NR <= 4 { next }
+    $1 == "zephyr-codex-compat-v2" || $1 == "binary_sha256" || $1 == "version_sha256" || $1 == "features_sha256" || $1 == "profile" || $1 == "omitted_config" || $1 == "descriptor_sha256" { next }
     $1 !~ /^[a-z0-9_]+$/ || $2 !~ /^(true|false)$/ || NF != 2 { exit 1 }
     seen[$1]++ { exit 1 }
     { print $0 }
@@ -622,8 +823,14 @@ load_compatibility() {
     echo "zephyr codex dispatch: malformed compatibility descriptor" >&2
     exit 1
   }
-  if [ ! -s "$compatibility_features" ] || [ "$(hash_file "$compatibility_features")" != "$expected_features_hash" ]; then
+  if [ "$(hash_file "$compatibility_features")" != "$expected_features_hash" ]; then
     echo "zephyr codex dispatch: compatibility descriptor feature hash mismatch" >&2
+    exit 1
+  fi
+  descriptor_payload=$work_dir/loaded-compatibility-payload.txt
+  awk '!/^descriptor_sha256=/' "$compat" > "$descriptor_payload"
+  if [ "$(hash_file "$descriptor_payload")" != "$expected_descriptor_hash" ]; then
+    echo "zephyr codex dispatch: compatibility descriptor hash mismatch" >&2
     exit 1
   fi
 }
@@ -700,6 +907,7 @@ else
 fi
 
 invoke_codex() {
+<<<<<<< HEAD
   set -- "$codex_path" exec \
     --strict-config \
     --ignore-user-config \
@@ -730,6 +938,9 @@ invoke_codex() {
   set -- "$@" -
   run_with_timeout "$dispatch_timeout" "$events_file" "$stderr_file" "$prompt_file" \
     env HOME="$isolated_codex_home" CODEX_HOME="$isolated_codex_home" "$@"
+=======
+  run_codex_profile "$compatibility_profile" "$effort" "$schema_path" "$prompt_file" "$last_message" "$events_file" "$stderr_file" "$dispatch_timeout"
+>>>>>>> origin/main
 }
 
 attempt=1
