@@ -355,7 +355,7 @@ The core verifies that:
 - rejected and human-review verdicts have reasons;
 - duplicate references target a valid canonical candidate and form no cycle.
 
-The core then deduplicates accepted findings, preserves source roles, applies stable ordering and report limits, and writes review.json.
+The core then deduplicates accepted findings, preserves source roles, applies stable ordering, and writes review.json.
 
 ### 6.12 Rendering and stale detection
 
@@ -709,7 +709,7 @@ review.md summarizes:
 - failed roles and stages;
 - rejected-candidate statistics and artifact paths.
 
-Default display includes all P0, up to five P1, up to three P2, and P3 only when requested or when no higher-severity finding exists.
+Default display includes findings up to the configured final finding limit, ordered by severity P0-P3.
 
 If there are no validated findings, say that no evidence-supported problems were found in the reviewed scope. Never claim that the code or specification is fully correct.
 

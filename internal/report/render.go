@@ -37,7 +37,7 @@ func RenderMarkdown(review Review, options RenderOptions) ([]byte, error) {
 		return nil, fmt.Errorf("cannot render invalid review")
 	}
 	if options.MaxFinalFindings <= 0 {
-		options.MaxFinalFindings = 8
+		options.MaxFinalFindings = 30
 	}
 	view := buildView(review, options)
 	parsed, err := template.New("review").Funcs(template.FuncMap{

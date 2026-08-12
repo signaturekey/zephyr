@@ -99,7 +99,7 @@ func TestRenderMarkdownHidesP3WhenHigherSeverityExists(t *testing.T) {
 		Version: 1, RunID: "run", Status: "complete", Scope: Scope{Mode: "implementation", Source: "working-tree"},
 		Findings: []FinalFinding{p1, p3}, Rejected: RejectedSummary{ByReason: map[string]int{}},
 	}
-	data, err := RenderMarkdown(review, RenderOptions{MaxFinalFindings: 8})
+	data, err := RenderMarkdown(review, RenderOptions{MaxFinalFindings: 30})
 	if err != nil {
 		t.Fatal(err)
 	}

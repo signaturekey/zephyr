@@ -352,7 +352,7 @@ limits:
   max_parallel_reviewers: 4
   max_roles_standard: 15
   max_roles_thorough: 15
-  max_final_findings: 10
+  max_final_findings: 30
 
 roles:
   code-simplifier:
@@ -472,7 +472,7 @@ zephyr <command> --help
 | Найден `filter.*.clean/process` | Используйте безопасный `staged`, `commit-range` или `plan-only`, если scope это допускает |
 | Reviewer завершился ошибкой | Проверьте coverage limits и безопасный fingerprint ошибки в `trace.json` |
 | Evidence-gate завершился ошибкой | Run остаётся `incomplete`; candidates не являются findings |
-| P3 нет в Markdown | Используйте `render --include-p3`; полный результат остаётся в `review.json` |
+| Findings нет в Markdown | Проверьте, что они прошли evidence-gate; Markdown и `review.json` содержат весь validated результат |
 
 <a id="development"></a>
 ## Разработка
