@@ -1565,6 +1565,10 @@ def validate_codex_output_schemas() -> None:
         path = ROOT / "schemas" / name
         document = json.loads(path.read_text(encoding="utf-8"))
 
+        version = document.get("properties", {}).get("version", {})
+        if version.get("type") != "integer":
+            fail(f"{path}: Codex root version property must declare type integer")
+
         def walk(node: object, context: str) -> None:
             if isinstance(node, dict):
                 properties = node.get("properties")
