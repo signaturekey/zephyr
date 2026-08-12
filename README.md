@@ -397,6 +397,41 @@ Probe сохраняет SHA-256 frozen policy в compatibility descriptor. По
 router, reviewers и evidence gate сверяют этот хеш, поэтому изменение policy
 файла уже после probe останавливает запуск.
 
+Встроенный профиль распределяет нагрузку так:
+
+| Участок | Default model / effort | Fast |
+|---|---|---|
+| `probe` | Luna / low | да |
+| `semantic_router` | Luna / medium | нет |
+| обычные reviewers | Terra / high | нет |
+| `skill-authoring-expert`, `qa-expert` | Terra / medium | нет |
+| `reliability-expert`, `messaging-expert`, `infrastructure-expert`, `storage-expert`, `sql-expert` | Sol / high | нет |
+| `architect-reviewer`, `security-auditor` | Sol / xhigh | нет |
+| `evidence_gate` | Sol / xhigh | нет |
+| `code-simplifier` | Luna / low | да |
+
+Все reviewer-роли перечислены в `configs/default.yaml` и могут быть переопределены
+индивидуально в `stages.reviewers.roles`. Например:
+
+```yaml
+model_policy:
+  default: { model: gpt-5.6-terra, effort: high, fast: false }
+  stages:
+    probe: { model: gpt-5.6-luna, effort: low, fast: true }
+    semantic_router: { model: gpt-5.6-luna, effort: medium, fast: false }
+    reviewers:
+      default: { model: gpt-5.6-terra, effort: high, fast: false }
+      roles:
+        security-auditor: { model: gpt-5.6-sol, effort: xhigh, fast: false }
+        code-simplifier: { model: gpt-5.6-luna, effort: low, fast: true }
+    evidence_gate: { model: gpt-5.6-sol, effort: xhigh, fast: false }
+```
+
+Поля можно задавать частично: например, только `effort: xhigh` у роли
+сохраняет унаследованную модель. `model: inherit` убирает явный `--model` и
+использует модель Codex по умолчанию. После `collect` менять policy-файл нельзя:
+его хеш привязан к compatibility descriptor.
+
 <a id="safety"></a>
 ## Гарантии read-only
 
