@@ -839,9 +839,21 @@ printf '{}\\n' > "$output"
                 "CODEX_HOME": str(source_home),
             }
         )
+        policy = root / "model-policy.txt"
+        policy_lines = [
+            "zephyr-codex-model-policy-v1",
+            "probe\t-\tgpt-5.6-luna\tlow\ttrue",
+            "semantic-router\t-\tgpt-5.6-luna\tmedium\tfalse",
+            "evidence-gate\t-\tgpt-5.6-sol\txhigh\ttrue",
+        ]
+        policy_lines.extend(
+            f"reviewer\t{reviewer}\t{'gpt-5.6-sol' if reviewer == 'security-auditor' else 'gpt-5.6-terra'}\t{'xhigh' if reviewer == 'security-auditor' else 'high'}\t{'true' if reviewer == 'security-auditor' else 'false'}"
+            for reviewer in REVIEWERS
+        )
+        policy.write_text("\n".join(policy_lines) + "\n", encoding="utf-8")
         compatibility = root / "compatibility.txt"
         probe = subprocess.run(
-            ["sh", str(dispatcher), "probe", "--output", str(compatibility)],
+            ["sh", str(dispatcher), "probe", "--output", str(compatibility), "--policy", str(policy)],
             check=False,
             capture_output=True,
             env=environment,
@@ -859,6 +871,8 @@ printf '{}\\n' > "$output"
                 str(packet),
                 "--compat",
                 str(compatibility),
+                "--policy",
+                str(policy),
                 "--output",
                 str(output),
             ],
@@ -884,6 +898,12 @@ printf '{}\\n' > "$output"
         for required in ("--ignore-user-config", "--ignore-rules", "--ephemeral"):
             if required not in argv:
                 fail(f"Codex dispatcher invocation lacks {required!r}")
+        if "--model" not in argv or argv[argv.index("--model") + 1] != "gpt-5.6-terra":
+            fail("Codex dispatcher did not apply the reviewer model policy")
+        if 'model_reasoning_effort="high"' not in argv:
+            fail("Codex dispatcher did not apply the reviewer effort policy")
+        if 'service_tier="default"' not in argv or any(argv[index : index + 2] == ["--enable", "fast_mode"] for index in range(len(argv) - 1)):
+            fail("Codex dispatcher did not apply the reviewer Fast policy")
         for expected_feature in (
             "auto_compaction",
             "shell_tool",
@@ -901,6 +921,25 @@ printf '{}\\n' > "$output"
             if not any(argv[index : index + 2] == ["--disable", expected_feature] for index in range(len(argv) - 1)):
                 fail(f"Codex dispatcher did not disable available feature {expected_feature!r}")
 
+        fast_output = root / "candidate-security-fast.json"
+        fast_result = subprocess.run(
+            [
+                "sh", str(dispatcher), "reviewer", "--role", "security-auditor",
+                "--packet", str(packet), "--compat", str(compatibility),
+                "--policy", str(policy), "--output", str(fast_output),
+            ],
+            check=False, capture_output=True, env=environment,
+        )
+        if fast_result.returncode != 0 or fast_output.read_bytes() != b"{}\n":
+            fail(f"Codex dispatcher did not execute a Fast role: {fast_result.stderr.decode(errors='replace')}")
+        fast_argv = arguments.read_text(encoding="utf-8").splitlines()
+        if "--model" not in fast_argv or fast_argv[fast_argv.index("--model") + 1] != "gpt-5.6-sol":
+            fail("Codex dispatcher did not apply the role-specific Fast model")
+        if 'model_reasoning_effort="xhigh"' not in fast_argv or 'service_tier="fast"' not in fast_argv:
+            fail("Codex dispatcher did not apply Fast reasoning or service tier")
+        if not any(fast_argv[index : index + 2] == ["--enable", "fast_mode"] for index in range(len(fast_argv) - 1)):
+            fail("Codex dispatcher did not enable Fast mode")
+
         for reviewer in REVIEWERS:
             if reviewer == "code-reviewer":
                 continue
@@ -916,6 +955,8 @@ printf '{}\\n' > "$output"
                     str(packet),
                     "--compat",
                     str(compatibility),
+                    "--policy",
+                    str(policy),
                     "--output",
                     str(role_output),
                 ],
@@ -941,6 +982,8 @@ printf '{}\\n' > "$output"
                 str(request),
                 "--compat",
                 str(compatibility),
+                "--policy",
+                str(policy),
                 "--output",
                 str(routing_output),
             ],
@@ -971,6 +1014,8 @@ printf '{}\\n' > "$output"
                 str(request),
                 "--compat",
                 str(compatibility),
+                "--policy",
+                str(policy),
                 "--output",
                 str(routing_failure_output),
             ],
@@ -1004,6 +1049,8 @@ printf '{}\\n' > "$output"
                 str(request),
                 "--compat",
                 str(compatibility),
+                "--policy",
+                str(policy),
                 "--output",
                 str(routing_timeout_output),
             ],
@@ -1086,6 +1133,8 @@ printf '{}\\n' > "$output"
                 str(packet),
                 "--compat",
                 str(compatibility),
+                "--policy",
+                str(policy),
                 "--output",
                 str(changed_output),
             ],
@@ -1122,6 +1171,8 @@ printf '{}\\n' > "$output"
                 str(packet),
                 "--compat",
                 str(reordered_compatibility),
+                "--policy",
+                str(policy),
                 "--output",
                 str(reordered_output),
             ],
@@ -1146,6 +1197,8 @@ printf '{}\\n' > "$output"
                 str(packet),
                 "--compat",
                 str(tampered_compatibility),
+                "--policy",
+                str(policy),
                 "--output",
                 str(tampered_output),
             ],
@@ -1155,6 +1208,20 @@ printf '{}\\n' > "$output"
         )
         if tampered_result.returncode == 0 or "compatibility descriptor feature hash mismatch" not in tampered_result.stderr.decode(errors="replace"):
             fail("Codex dispatcher accepted a tampered compatibility descriptor")
+
+        changed_policy = root / "model-policy-changed.txt"
+        changed_policy.write_bytes(policy.read_bytes().replace(b"gpt-5.6-terra", b"gpt-5.6-lunar", 1))
+        changed_policy_output = root / "candidate-changed-policy.json"
+        changed_policy_result = subprocess.run(
+            [
+                "sh", str(dispatcher), "reviewer", "--role", "code-reviewer",
+                "--packet", str(packet), "--compat", str(compatibility),
+                "--policy", str(changed_policy), "--output", str(changed_policy_output),
+            ],
+            check=False, capture_output=True, env=environment,
+        )
+        if changed_policy_result.returncode == 0 or "model policy changed after compatibility probe" not in changed_policy_result.stderr.decode(errors="replace"):
+            fail("Codex dispatcher accepted a policy changed after compatibility probe")
 
         unknown_environment = environment.copy()
         unknown_arguments = root / "unknown-arguments.txt"
@@ -1410,6 +1477,8 @@ printf '{}\\n' > "$output"
                 str(packet),
                 "--compat",
                 str(tampered_profile),
+                "--policy",
+                str(policy),
                 "--output",
                 str(tampered_profile_output),
             ],

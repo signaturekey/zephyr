@@ -2,7 +2,9 @@ package workflow_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +22,71 @@ import (
 	"github.com/signaturekey/zephyr/internal/trace"
 	"github.com/signaturekey/zephyr/internal/workflow"
 )
+
+func TestCollectFreezesResolvedModelPolicy(t *testing.T) {
+	repository := newRepository(t)
+	if err := os.MkdirAll(filepath.Join(repository, ".zephyr"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(repository, ".zephyr", "config.yaml"), `version: 1
+model_policy:
+  default:
+    model: gpt-5.6-terra
+    effort: medium
+  stages:
+    reviewers:
+      default:
+        fast: true
+      roles:
+        security-auditor:
+          model: gpt-5.6-sol
+          effort: xhigh
+`)
+	writeFile(t, filepath.Join(repository, "main.go"), "package example\n")
+
+	service, err := workflow.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	initialized, err := service.Init(context.Background(), workflow.InitOptions{
+		Repository: repository, Mode: run.ModeImplementation, Source: run.SourceWorkingTree,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected, err := service.Collect(context.Background(), workflow.CollectOptions{RunID: initialized.RunID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := os.ReadFile(collected.ModelPolicyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(collected.ModelPolicyPath, repository) {
+		t.Fatalf("model policy path leaked into repository: %q", collected.ModelPolicyPath)
+	}
+	if got, want := collected.ModelPolicySHA256, fmt.Sprintf("%x", sha256.Sum256(policy)); got != want {
+		t.Fatalf("model policy hash = %q, want %q", got, want)
+	}
+	for _, want := range []string{
+		"probe\t-\tgpt-5.6-terra\tmedium\tfalse",
+		"reviewer\tcode-reviewer\tgpt-5.6-terra\tmedium\ttrue",
+		"reviewer\tsecurity-auditor\tgpt-5.6-sol\txhigh\ttrue",
+		"evidence-gate\t-\tgpt-5.6-terra\txhigh\tfalse",
+	} {
+		if !strings.Contains(string(policy), want) {
+			t.Fatalf("frozen policy lacks %q:\n%s", want, policy)
+		}
+	}
+
+	inspected, err := service.Inspect(context.Background(), initialized.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspected.Artifacts.ModelPolicy != collected.ModelPolicyPath {
+		t.Fatalf("inspect model policy = %q, want %q", inspected.Artifacts.ModelPolicy, collected.ModelPolicyPath)
+	}
+}
 
 func TestImplementationLifecycleProducesEvidenceGatedReportWithoutDirtyingRepository(t *testing.T) {
 	repository := newRepository(t)

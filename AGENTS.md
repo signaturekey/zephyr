@@ -606,6 +606,8 @@ The configuration controls:
 
 The checked-in default configuration is the executable source for exact default values. Keep this document and that configuration consistent.
 
+`model_policy` is an optional, deterministic configuration section. The core validates and freezes resolved model, reasoning-effort, and Fast-mode settings into `context/model-policy.txt`; the Codex harness translates them into CLI flags. The probe binds its SHA-256 to the compatibility descriptor and every later process rejects a policy mismatch. The core must not call a provider API, silently substitute an unavailable model, or let a live project configuration change an already collected run. Fast mode changes service tier only and must not weaken the isolated read-only boundary.
+
 ## 12. Harness contracts
 
 ### 12.1 Shared contract

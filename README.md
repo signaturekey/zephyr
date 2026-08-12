@@ -337,6 +337,22 @@ version: 1
 profile: thorough
 language: auto
 
+model_policy:
+  default:
+    model: gpt-5.6-terra
+    effort: high
+    fast: false
+  stages:
+    probe:
+      model: gpt-5.6-luna
+      effort: low
+      fast: true
+    reviewers:
+      roles:
+        security-auditor:
+          model: gpt-5.6-sol
+          effort: xhigh
+
 limits:
   max_parallel_reviewers: 4
   max_roles_standard: 15
@@ -366,6 +382,20 @@ redaction:
 
 Списки routing и path policies дополняют defaults. Scalar values и отдельные
 limits переопределяют их.
+
+`model_policy` выбирает модель, reasoning effort и Fast mode для probe,
+semantic router, reviewer defaults, отдельных ролей и evidence-gate. Роль
+наследует поля из `reviewers.default`, затем из `default`; `model: inherit`
+не передаёт `--model` в Codex. Во время `collect` Zephyr фиксирует итог в
+`context/model-policy.txt`; dispatcher использует только этот artifact.
+Допустимые effort: `none`, `low`, `medium`, `high`, `xhigh`, `max`. Fast mode
+передаётся как `service_tier="fast"` и `fast_mode`; он ускоряет вызов, но не
+меняет изоляцию, схему или evidence-gate. Неподдерживаемая модель или Fast
+режим — ошибка конкретной стадии, а не повод незаметно сменить модель.
+
+Probe сохраняет SHA-256 frozen policy в compatibility descriptor. Последующие
+router, reviewers и evidence gate сверяют этот хеш, поэтому изменение policy
+файла уже после probe останавливает запуск.
 
 <a id="safety"></a>
 ## Гарантии read-only

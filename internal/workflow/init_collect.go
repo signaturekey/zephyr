@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/signaturekey/zephyr/internal/config"
 	"github.com/signaturekey/zephyr/internal/contextpack"
 	"github.com/signaturekey/zephyr/internal/gitcontext"
 	"github.com/signaturekey/zephyr/internal/redaction"
@@ -183,6 +185,20 @@ func (service *Service) Collect(ctx context.Context, options CollectOptions) (re
 	if _, err := service.store.WriteJSON(ctx, manifest.ID, cfg, "context", "config.json"); err != nil {
 		return result, err
 	}
+	modelPolicy, err := config.ResolveModelPolicy(cfg)
+	if err != nil {
+		return result, fmt.Errorf("resolve frozen model policy: %w", err)
+	}
+	modelPolicyBytes, err := modelPolicy.MarshalText()
+	if err != nil {
+		return result, fmt.Errorf("encode frozen model policy: %w", err)
+	}
+	modelPolicyPath, err := service.store.WriteArtifact(ctx, manifest.ID, modelPolicyBytes, "context", "model-policy.txt")
+	if err != nil {
+		return result, fmt.Errorf("persist frozen model policy: %w", err)
+	}
+	modelPolicySHA256 := fmt.Sprintf("%x", sha256.Sum256(modelPolicyBytes))
+	event.setMetadata("model_policy_sha256", modelPolicySHA256)
 	snapshot, err := service.collector.Collect(ctx, gitcontext.Options{
 		Repository:              manifest.Repository,
 		Source:                  manifest.Source,
@@ -284,14 +300,16 @@ func (service *Service) Collect(ctx context.Context, options CollectOptions) (re
 		return result, err
 	}
 	return CollectResult{
-		RunID:        manifest.ID,
-		Mode:         manifest.Mode,
-		Source:       manifest.Source,
-		Reviewable:   hasChanges,
-		Stats:        snapshot.Stats,
-		SnapshotPath: snapshotPath,
-		MetadataPath: metadataPath,
-		StatusPath:   statusPath,
+		RunID:             manifest.ID,
+		Mode:              manifest.Mode,
+		Source:            manifest.Source,
+		Reviewable:        hasChanges,
+		Stats:             snapshot.Stats,
+		SnapshotPath:      snapshotPath,
+		MetadataPath:      metadataPath,
+		StatusPath:        statusPath,
+		ModelPolicyPath:   modelPolicyPath,
+		ModelPolicySHA256: modelPolicySHA256,
 	}, nil
 }
 

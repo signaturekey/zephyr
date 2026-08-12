@@ -52,6 +52,7 @@ type Config struct {
 	Limits          Limits                `json:"limits" yaml:"limits"`
 	Roles           map[string]RoleConfig `json:"roles" yaml:"roles"`
 	Routing         []RoutingRule         `json:"routing" yaml:"routing"`
+	ModelPolicy     ModelPolicy           `json:"model_policy" yaml:"model_policy"`
 	RestrictedPaths []string              `json:"restricted_paths" yaml:"restricted_paths"`
 	Redaction       Redaction             `json:"redaction" yaml:"redaction"`
 }
@@ -232,6 +233,9 @@ func Validate(cfg Config) error {
 			return invalid("redaction.deny_patterns[%d]: %v", i, err)
 		}
 	}
+	if _, err := ResolveModelPolicy(cfg); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -243,6 +247,7 @@ type partialConfig struct {
 	Limits          *partialLimits               `yaml:"limits"`
 	Roles           map[string]partialRoleConfig `yaml:"roles"`
 	Routing         *[]RoutingRule               `yaml:"routing"`
+	ModelPolicy     *partialModelPolicy          `yaml:"model_policy"`
 	RestrictedPaths *[]string                    `yaml:"restricted_paths"`
 	Redaction       *partialRedaction            `yaml:"redaction"`
 }
@@ -261,6 +266,29 @@ type partialRoleConfig struct {
 type partialRedaction struct {
 	Enabled      *bool     `yaml:"enabled"`
 	DenyPatterns *[]string `yaml:"deny_patterns"`
+}
+
+type partialModelSettings struct {
+	Model  *string `yaml:"model"`
+	Effort *string `yaml:"effort"`
+	Fast   *bool   `yaml:"fast"`
+}
+
+type partialModelPolicy struct {
+	Default *partialModelSettings     `yaml:"default"`
+	Stages  *partialModelPolicyStages `yaml:"stages"`
+}
+
+type partialModelPolicyStages struct {
+	Probe          *partialModelSettings       `yaml:"probe"`
+	SemanticRouter *partialModelSettings       `yaml:"semantic_router"`
+	Reviewers      *partialReviewerModelPolicy `yaml:"reviewers"`
+	EvidenceGate   *partialModelSettings       `yaml:"evidence_gate"`
+}
+
+type partialReviewerModelPolicy struct {
+	Default *partialModelSettings           `yaml:"default"`
+	Roles   map[string]partialModelSettings `yaml:"roles"`
 }
 
 func decodePartial(data []byte, source string) (partialConfig, error) {
@@ -320,6 +348,9 @@ func apply(dst *Config, src partialConfig) {
 	if src.Routing != nil {
 		dst.Routing = append(dst.Routing, (*src.Routing)...)
 	}
+	if src.ModelPolicy != nil {
+		applyModelPolicy(&dst.ModelPolicy, *src.ModelPolicy)
+	}
 	if src.RestrictedPaths != nil {
 		dst.RestrictedPaths = append(dst.RestrictedPaths, (*src.RestrictedPaths)...)
 	}
@@ -329,6 +360,53 @@ func apply(dst *Config, src partialConfig) {
 		}
 		if src.Redaction.DenyPatterns != nil {
 			dst.Redaction.DenyPatterns = append(dst.Redaction.DenyPatterns, (*src.Redaction.DenyPatterns)...)
+		}
+	}
+}
+
+func applyModelSettings(dst *ModelSettings, src partialModelSettings) {
+	if src.Model != nil {
+		dst.Model = *src.Model
+	}
+	if src.Effort != nil {
+		dst.Effort = *src.Effort
+	}
+	if src.Fast != nil {
+		dst.Fast = *src.Fast
+		dst.fastSet = true
+	}
+}
+
+func applyModelPolicy(dst *ModelPolicy, src partialModelPolicy) {
+	if src.Default != nil {
+		applyModelSettings(&dst.Default, *src.Default)
+	}
+	if src.Stages == nil {
+		return
+	}
+	if src.Stages.Probe != nil {
+		applyModelSettings(&dst.Stages.Probe, *src.Stages.Probe)
+	}
+	if src.Stages.SemanticRouter != nil {
+		applyModelSettings(&dst.Stages.SemanticRouter, *src.Stages.SemanticRouter)
+	}
+	if src.Stages.EvidenceGate != nil {
+		applyModelSettings(&dst.Stages.EvidenceGate, *src.Stages.EvidenceGate)
+	}
+	if src.Stages.Reviewers == nil {
+		return
+	}
+	if src.Stages.Reviewers.Default != nil {
+		applyModelSettings(&dst.Stages.Reviewers.Default, *src.Stages.Reviewers.Default)
+	}
+	if src.Stages.Reviewers.Roles != nil {
+		if dst.Stages.Reviewers.Roles == nil {
+			dst.Stages.Reviewers.Roles = make(map[string]ModelSettings, len(src.Stages.Reviewers.Roles))
+		}
+		for role, overlay := range src.Stages.Reviewers.Roles {
+			settings := dst.Stages.Reviewers.Roles[role]
+			applyModelSettings(&settings, overlay)
+			dst.Stages.Reviewers.Roles[role] = settings
 		}
 	}
 }

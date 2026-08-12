@@ -34,14 +34,16 @@ type CollectOptions struct {
 }
 
 type CollectResult struct {
-	RunID        string               `json:"run_id"`
-	Mode         run.Mode             `json:"mode"`
-	Source       run.Source           `json:"source"`
-	Reviewable   bool                 `json:"reviewable_changes"`
-	Stats        gitcontext.DiffStats `json:"stats"`
-	SnapshotPath string               `json:"snapshot_path"`
-	MetadataPath string               `json:"metadata_path"`
-	StatusPath   string               `json:"status_path"`
+	RunID             string               `json:"run_id"`
+	Mode              run.Mode             `json:"mode"`
+	Source            run.Source           `json:"source"`
+	Reviewable        bool                 `json:"reviewable_changes"`
+	Stats             gitcontext.DiffStats `json:"stats"`
+	SnapshotPath      string               `json:"snapshot_path"`
+	MetadataPath      string               `json:"metadata_path"`
+	StatusPath        string               `json:"status_path"`
+	ModelPolicyPath   string               `json:"model_policy_path"`
+	ModelPolicySHA256 string               `json:"model_policy_sha256"`
 }
 
 type ContextAddOptions struct {
@@ -203,6 +205,7 @@ type ArtifactPaths struct {
 	Manifest       string `json:"manifest"`
 	Snapshot       string `json:"snapshot,omitempty"`
 	Capabilities   string `json:"capabilities,omitempty"`
+	ModelPolicy    string `json:"model_policy,omitempty"`
 	Packet         string `json:"packet,omitempty"`
 	Routing        string `json:"routing,omitempty"`
 	RoutingRequest string `json:"routing_request,omitempty"`

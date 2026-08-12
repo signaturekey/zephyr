@@ -204,6 +204,9 @@ const markdownTemplate = `# Ревью Zephyr
 {{- if .Review.Scope.PlanHash}}
 - Хеш плана: {{clean .Review.Scope.PlanHash}}
 {{- end}}
+{{- if .Review.Scope.ModelPolicySHA256}}
+- Хеш model policy: {{clean .Review.Scope.ModelPolicySHA256}}
+{{- end}}
 {{- if .Review.Scope.Stale}}
 - Снимок устарел: отчёт относится к исходному SHA и отпечатку рабочего дерева
 {{- end}}
