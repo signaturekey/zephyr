@@ -385,7 +385,7 @@ limits переопределяют их.
 
 `model_policy` выбирает модель, reasoning effort и Fast mode для probe,
 semantic router, reviewer defaults, отдельных ролей и evidence-gate. Роль
-наследует поля из `reviewers.default`, затем из `default`; `model: inherit`
+наследует поля из `reviewers.default`, если он задан, затем из общего `default`; `model: inherit`
 не передаёт `--model` в Codex. Во время `collect` Zephyr фиксирует итог в
 `context/model-policy.txt`; dispatcher использует только этот artifact.
 Допустимые effort: `none`, `low`, `medium`, `high`, `xhigh`, `max`. Fast mode
@@ -402,13 +402,12 @@ router, reviewers и evidence gate сверяют этот хеш, поэтом�
 | Участок | Default model / effort | Fast |
 |---|---|---|
 | `probe` | Luna / low | да |
-| `semantic_router` | Luna / medium | нет |
-| обычные reviewers | Terra / high | нет |
-| `skill-authoring-expert`, `qa-expert` | Terra / medium | нет |
+| `semantic_router`, `qa-expert`, `code-simplifier` | Terra / low | нет |
+| обычные reviewers | Terra / medium | нет |
+| `skill-authoring-expert` | Terra / medium | нет |
 | `reliability-expert`, `messaging-expert`, `infrastructure-expert`, `storage-expert`, `sql-expert` | Sol / high | нет |
-| `architect-reviewer`, `security-auditor` | Sol / xhigh | нет |
+| `architect-reviewer`, `security-auditor` | Sol / high | нет |
 | `evidence_gate` | Sol / xhigh | нет |
-| `code-simplifier` | Luna / low | да |
 
 Все reviewer-роли перечислены в `configs/default.yaml` и могут быть переопределены
 индивидуально в `stages.reviewers.roles`. Например:
