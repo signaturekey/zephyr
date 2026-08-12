@@ -36,3 +36,16 @@ func TestFinishRejectsInvalidState(t *testing.T) {
 		t.Fatal("expected invalid terminal status error")
 	}
 }
+
+func TestStartedFindsOnePendingStage(t *testing.T) {
+	value := Trace{Version: Version, RunID: "run"}
+	index := value.Start("semantic-routing", time.Now(), nil)
+	got, err := value.Started("semantic-routing")
+	if err != nil || got != index {
+		t.Fatalf("started event = %d, %v; want %d", got, err, index)
+	}
+	value.Start("semantic-routing", time.Now(), nil)
+	if _, err := value.Started("semantic-routing"); err == nil {
+		t.Fatal("duplicate pending semantic-routing events were accepted")
+	}
+}

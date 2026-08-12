@@ -6,6 +6,7 @@ umask 077
 usage() {
   cat >&2 <<'EOF'
 usage:
+  dispatch.sh routing --packet FILE --request FILE --output FILE
   dispatch.sh reviewer --role ROLE --packet FILE --output FILE [--format-retry]
   dispatch.sh evidence --prechecked FILE --evidence FILE --output FILE
 
@@ -18,6 +19,7 @@ kind=$1
 shift
 role=
 packet=
+request=
 prechecked=
 evidence=
 output=
@@ -27,6 +29,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --role) [ "$#" -ge 2 ] || { usage; exit 2; }; role=$2; shift 2 ;;
     --packet) [ "$#" -ge 2 ] || { usage; exit 2; }; packet=$2; shift 2 ;;
+    --request) [ "$#" -ge 2 ] || { usage; exit 2; }; request=$2; shift 2 ;;
     --prechecked) [ "$#" -ge 2 ] || { usage; exit 2; }; prechecked=$2; shift 2 ;;
     --evidence) [ "$#" -ge 2 ] || { usage; exit 2; }; evidence=$2; shift 2 ;;
     --output) [ "$#" -ge 2 ] || { usage; exit 2; }; output=$2; shift 2 ;;
@@ -90,12 +93,22 @@ verify_asset() {
 }
 
 case "$kind" in
+  routing)
+    [ -z "$role" ] && [ -n "$packet" ] && [ -n "$request" ] && [ -z "$prechecked" ] && [ -z "$evidence" ] && [ "$format_retry" = no ] || { usage; exit 2; }
+    role=semantic-router
+    role_path=$asset_root/roles/semantic-router.md
+    schema_path=$asset_root/schemas/semantic-routing.schema.json
+    verify_asset "$role_path" roles/semantic-router.md
+    verify_asset "$schema_path" schemas/semantic-routing.schema.json
+    require_regular_absolute "$packet" packet
+    require_regular_absolute "$request" request
+    ;;
   reviewer)
     case "$role" in
       code-reviewer|architect-reviewer|golang-expert|typescript-expert|frontend-expert|skill-authoring-expert|reliability-expert|messaging-expert|infrastructure-expert|storage-expert|security-auditor|sql-expert|contract-reviewer|qa-expert|code-simplifier) ;;
       *) echo "zephyr opencode dispatch: unknown reviewer role" >&2; exit 2 ;;
     esac
-    [ -n "$packet" ] && [ -z "$prechecked" ] && [ -z "$evidence" ] || { usage; exit 2; }
+    [ -n "$packet" ] && [ -z "$request" ] && [ -z "$prechecked" ] && [ -z "$evidence" ] || { usage; exit 2; }
     protocol_path=$asset_root/roles/reviewer-protocol.md
     role_path=$asset_root/roles/$role.md
     schema_path=$asset_root/schemas/candidate-findings.schema.json
@@ -105,7 +118,7 @@ case "$kind" in
     require_regular_absolute "$packet" packet
     ;;
   evidence)
-    [ -z "$role" ] && [ -z "$packet" ] && [ -n "$prechecked" ] && [ -n "$evidence" ] && [ "$format_retry" = no ] || { usage; exit 2; }
+    [ -z "$role" ] && [ -z "$packet" ] && [ -z "$request" ] && [ -n "$prechecked" ] && [ -n "$evidence" ] && [ "$format_retry" = no ] || { usage; exit 2; }
     role=evidence-gate
     role_path=$asset_root/roles/evidence-gate.md
     schema_path=$asset_root/schemas/evidence-verdict.schema.json
@@ -200,6 +213,10 @@ while :; do
       if LC_ALL=C grep -F -q -- "$nonce" "$checked"; then collision=yes; fi
     done
     if [ "$format_retry" = yes ] && LC_ALL=C grep -F -q -- "$nonce" "$retry_file"; then collision=yes; fi
+  elif [ "$kind" = routing ]; then
+    for checked in "$role_path" "$packet" "$request" "$schema_path"; do
+      if LC_ALL=C grep -F -q -- "$nonce" "$checked"; then collision=yes; fi
+    done
   else
     for checked in "$role_path" "$prechecked" "$evidence" "$schema_path"; do
       if LC_ALL=C grep -F -q -- "$nonce" "$checked"; then collision=yes; fi
@@ -226,6 +243,11 @@ if [ "$kind" = reviewer ]; then
   append_block review-packet "$packet"
   append_block candidate-schema "$schema_path"
   if [ "$format_retry" = yes ]; then append_block retry-directive "$retry_file"; fi
+elif [ "$kind" = routing ]; then
+  append_block semantic-router-prompt "$role_path"
+  append_block review-packet "$packet"
+  append_block routing-request "$request"
+  append_block semantic-routing-schema "$schema_path"
 else
   append_block evidence-gate-prompt "$role_path"
   append_block prechecked-candidates "$prechecked"
@@ -236,6 +258,18 @@ fi
 opencode_bin=${ZEPHYR_OPENCODE_BIN:-opencode}
 if ! command -v "$opencode_bin" >/dev/null 2>&1; then
   echo "zephyr opencode dispatch: opencode executable not found" >&2
+  exit 1
+fi
+
+dispatch_timeout=${ZEPHYR_OPENCODE_DISPATCH_TIMEOUT:-900}
+case "$dispatch_timeout" in
+  ''|*[!0-9]*)
+    echo "zephyr opencode dispatch: ZEPHYR_OPENCODE_DISPATCH_TIMEOUT must be an integer" >&2
+    exit 1
+    ;;
+esac
+if [ "$dispatch_timeout" -lt 1 ] || [ "$dispatch_timeout" -gt 3600 ]; then
+  echo "zephyr opencode dispatch: ZEPHYR_OPENCODE_DISPATCH_TIMEOUT must be between 1 and 3600" >&2
   exit 1
 fi
 
@@ -250,19 +284,79 @@ classify_failure() {
   printf '%s\n' unknown
 }
 
-retryable_failure() { case "$1" in rate-limit|provider-unavailable|transport|unknown) return 0 ;; *) return 1 ;; esac; }
+retryable_failure() { case "$1" in rate-limit|provider-unavailable|transport|timeout|unknown) return 0 ;; *) return 1 ;; esac; }
+
+run_with_timeout() {
+  timeout_limit=$1
+  command_stdout=$2
+  command_stderr=$3
+  command_stdin=$4
+  shift 4
+  timeout_marker=$work_dir/timeout-marker-$$
+  watchdog_sleep_file=$work_dir/watchdog-sleep-$$
+  rm -f -- "$timeout_marker"
+  rm -f -- "$watchdog_sleep_file"
+
+  start_in_isolated_session() {
+    if command -v setsid >/dev/null 2>&1; then exec setsid "$@"; fi
+    if command -v perl >/dev/null 2>&1; then
+      exec perl -MPOSIX=setsid -e 'setsid() or die "setsid: $!\n"; exec @ARGV or die "exec: $!\n"' "$@"
+    fi
+    echo "zephyr opencode dispatch: setsid or Perl with POSIX::setsid is required for bounded dispatch" >&2
+    exit 127
+  }
+
+  terminate_process_group() {
+    signal=$1
+    process_group=$2
+    /bin/kill "-$signal" "-$process_group" 2>/dev/null || :
+  }
+
+  (
+    start_in_isolated_session "$@" < "$command_stdin"
+  ) > "$command_stdout" 2> "$command_stderr" &
+  command_pid=$!
+  (
+    sleep "$timeout_limit" &
+    watchdog_sleep_pid=$!
+    printf '%s\n' "$watchdog_sleep_pid" > "$watchdog_sleep_file"
+    wait "$watchdog_sleep_pid"
+    if kill -0 "$command_pid" 2>/dev/null; then
+      : > "$timeout_marker"
+      terminate_process_group TERM "$command_pid"
+      sleep 1
+      if kill -0 "$command_pid" 2>/dev/null; then terminate_process_group KILL "$command_pid"; fi
+    fi
+  ) >/dev/null 2>&1 &
+  watchdog_pid=$!
+  while [ ! -s "$watchdog_sleep_file" ] && kill -0 "$watchdog_pid" 2>/dev/null; do :; done
+  if wait "$command_pid"; then command_status=0; else command_status=$?; fi
+  if [ -f "$watchdog_sleep_file" ]; then
+    watchdog_sleep_pid=$(sed -n '1p' "$watchdog_sleep_file")
+    kill "$watchdog_sleep_pid" 2>/dev/null || :
+  fi
+  kill "$watchdog_pid" 2>/dev/null || :
+  wait "$watchdog_pid" 2>/dev/null || :
+  rm -f -- "$watchdog_sleep_file"
+  if [ -f "$timeout_marker" ]; then
+    rm -f -- "$timeout_marker"
+    return 124
+  fi
+  return "$command_status"
+}
 
 invoke_opencode() {
   set -- run --pure --agent zephyr-dispatch --format default --dir "$empty_workspace" --title "Zephyr $role"
   if [ -n "${ZEPHYR_OPENCODE_MODEL:-}" ]; then set -- "$@" --model "$ZEPHYR_OPENCODE_MODEL"; fi
   if [ -n "${ZEPHYR_OPENCODE_VARIANT:-}" ]; then set -- "$@" --variant "$ZEPHYR_OPENCODE_VARIANT"; fi
-  env -u OPENCODE_CONFIG -u OPENCODE_CONFIG_CONTENT \
+  run_with_timeout "$dispatch_timeout" "$result_file" "$stderr_file" "$prompt_file" \
+    env -u OPENCODE_CONFIG -u OPENCODE_CONFIG_CONTENT \
     HOME="$isolated_home" \
     XDG_CONFIG_HOME="$isolated_config" \
     XDG_DATA_HOME="$isolated_data" \
     XDG_CACHE_HOME="$isolated_cache" \
     XDG_STATE_HOME="$isolated_state" \
-    "$opencode_bin" "$@" <"$prompt_file" >"$result_file" 2>"$stderr_file"
+    "$opencode_bin" "$@"
 }
 
 attempt=1
@@ -272,7 +366,11 @@ while :; do
   : >"$stderr_file"
   if invoke_opencode; then opencode_status=0; else opencode_status=$?; fi
   if [ "$opencode_status" -eq 0 ]; then break; fi
-  failure_category=$(classify_failure "$stderr_file")
+  if [ "$opencode_status" -eq 124 ]; then
+    failure_category=timeout
+  else
+    failure_category=$(classify_failure "$stderr_file")
+  fi
   failure_hash=$(hash_file "$stderr_file")
   failure_bytes=$(wc -c <"$stderr_file" | tr -d ' ')
   failure_diagnostic="category=$failure_category status=$opencode_status stderr_sha256=$failure_hash stderr_bytes=$failure_bytes"

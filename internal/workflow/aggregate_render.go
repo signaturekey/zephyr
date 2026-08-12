@@ -333,6 +333,7 @@ func (service *Service) Inspect(ctx context.Context, runID string) (InspectResul
 		{&result.Artifacts.Snapshot, []string{"git", "snapshot.json"}},
 		{&result.Artifacts.Capabilities, []string{"context", "capabilities.json"}},
 		{&result.Artifacts.Packet, []string{"packet", "review-packet.json"}},
+		{&result.Artifacts.RoutingRequest, []string{"routing-request.json"}},
 		{&result.Artifacts.Routing, []string{"routing.json"}},
 		{&result.Artifacts.Candidates, []string{"evidence", "prechecked.json"}},
 		{&result.Artifacts.Verdicts, []string{"evidence", "verdicts.json"}},

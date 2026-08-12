@@ -57,11 +57,10 @@ Zephyr состоит из двух частей:
 
 | Компонент | Ответственность |
 |---|---|
-| Go CLI | Git snapshot, review packet, routing, schema validation, evidence precheck, дедупликация и отчёты |
-| Harness-пакет | Запуск моделей, доступ к разрешённому внешнему контексту и изоляция reviewer-процессов |
+| Go CLI | Git snapshot, review packet, protected routing policy, schema validation, fallback, evidence precheck, дедупликация и отчёты |
+| Harness-пакет | Изолированный semantic routing, запуск reviewer-моделей и доступ к разрешённому внешнему контексту |
 
-Модель не решает, какие роли запускать, и не формирует финальный отчёт напрямую.
-Эти этапы выполняет детерминированное Go-ядро.
+Одна изолированная модель классифицирует только необязательные роли по смыслу frozen packet. Детерминированное Go-ядро не позволяет ей удалить обязательные, явно запрошенные или подтверждённые changed paths роли, проверяет полный JSON-ответ и при сбое включает все нерешённые роли. Финальный отчёт модель напрямую не формирует.
 
 Каждый ревьюер получает один и тот же frozen packet, но проверяет только свою
 область. Например, `golang-expert` отвечает за Go-семантику, а
@@ -233,7 +232,7 @@ filtering.
 <a id="roles"></a>
 ## Роли ревьюеров
 
-Routing выбирает все релевантные роли в пределах настроенного лимита.
+Hybrid routing защищает роли по mode, user override и changed paths, а остальные классифицирует по смыслу immutable packet. Для implementation/alignment `security-auditor` также защищён от решений, управляемых содержимым недоверенного diff. При сбое semantic router применяется консервативный fallback.
 `max_parallel_reviewers` ограничивает только одновременный запуск, а не общее
 покрытие.
 
@@ -296,6 +295,7 @@ counterevidence. Уверенный тон модели доказательст
 | `manifest.json` | Scope, lifecycle и coverage limits |
 | `git/` | Git metadata, status и immutable diff |
 | `packet/review-packet.json` | Frozen input всех reviewer-ов |
+| `routing-request.json` | Protected roles, optional candidates и frozen evidence provenance |
 | `routing.json` | Выбранные и исключённые роли с причинами |
 | `candidates/` | Валидированные ответы reviewer-ролей |
 | `evidence/` | Precheck и verdicts evidence-gate |
@@ -352,7 +352,7 @@ limits:
   max_parallel_reviewers: 4
   max_roles_standard: 15
   max_roles_thorough: 15
-  max_final_findings: 10
+  max_final_findings: 30
 
 roles:
   code-simplifier:
@@ -433,6 +433,8 @@ zephyr context capability --run RUN_ID --source bitbucket --status not-required 
   --reason "no PR referenced"
 
 zephyr route --run RUN_ID
+zephyr fallback-routing --run RUN_ID \
+  --reason "manual CLI example without semantic model dispatch"
 
 zephyr validate-candidates \
   --run RUN_ID \
@@ -470,7 +472,7 @@ zephyr <command> --help
 | Найден `filter.*.clean/process` | Используйте безопасный `staged`, `commit-range` или `plan-only`, если scope это допускает |
 | Reviewer завершился ошибкой | Проверьте coverage limits и безопасный fingerprint ошибки в `trace.json` |
 | Evidence-gate завершился ошибкой | Run остаётся `incomplete`; candidates не являются findings |
-| P3 нет в Markdown | Используйте `render --include-p3`; полный результат остаётся в `review.json` |
+| Findings нет в Markdown | Проверьте, что они прошли evidence-gate; Markdown и `review.json` содержат весь validated результат |
 
 <a id="development"></a>
 ## Разработка

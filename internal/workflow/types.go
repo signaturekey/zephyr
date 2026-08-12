@@ -116,10 +116,29 @@ type RouteOptions struct {
 }
 
 type RouteResult struct {
-	RunID       string         `json:"run_id"`
-	PacketPath  string         `json:"packet_path"`
-	RoutingPath string         `json:"routing_path"`
-	Routing     routing.Result `json:"routing"`
+	RunID              string                  `json:"run_id"`
+	PacketPath         string                  `json:"packet_path"`
+	RoutingRequestPath string                  `json:"routing_request_path"`
+	RoutingPath        string                  `json:"routing_path,omitempty"`
+	RoutingRequest     routing.SemanticRequest `json:"routing_request"`
+	Routing            routing.Result          `json:"routing,omitempty"`
+}
+
+type ValidateRoutingOptions struct {
+	RunID string
+	Input []byte
+}
+
+type FinalizeRoutingOptions struct {
+	RunID  string
+	Reason string
+}
+
+type FinalizeRoutingResult struct {
+	RunID        string         `json:"run_id"`
+	RoutingPath  string         `json:"routing_path"`
+	Routing      routing.Result `json:"routing"`
+	TraceWarning string         `json:"trace_warning,omitempty"`
 }
 
 type ValidateCandidatesOptions struct {
@@ -186,6 +205,7 @@ type ArtifactPaths struct {
 	Capabilities   string `json:"capabilities,omitempty"`
 	Packet         string `json:"packet,omitempty"`
 	Routing        string `json:"routing,omitempty"`
+	RoutingRequest string `json:"routing_request,omitempty"`
 	Candidates     string `json:"candidates,omitempty"`
 	Verdicts       string `json:"verdicts,omitempty"`
 	ReviewJSON     string `json:"review_json,omitempty"`

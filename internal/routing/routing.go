@@ -29,31 +29,42 @@ const (
 	ReasonExplicitExclusion = "explicitly-excluded"
 	ReasonNoSignal          = "no-matching-signal"
 	ReasonProfileLimit      = "profile-limit"
+	ReasonSemanticCandidate = "semantic-candidate"
+	ReasonSemanticIncluded  = "semantic-include"
+	ReasonSemanticExcluded  = "semantic-exclude"
+	ReasonSemanticFallback  = "semantic-fallback"
+	ReasonSecurityBoundary  = "security-boundary"
 )
 
 var ErrInvalidInput = errors.New("invalid routing input")
 
 type Input struct {
-	Mode         Mode     `json:"mode"`
-	ChangedPaths []string `json:"changed_paths"`
-	Signals      []string `json:"signals"`
-	HasPlan      bool     `json:"has_plan"`
-	HasChanges   bool     `json:"has_changes"`
-	ForceInclude []string `json:"force_include,omitempty"`
-	ForceExclude []string `json:"force_exclude,omitempty"`
+	Mode          Mode     `json:"mode"`
+	ChangedPaths  []string `json:"changed_paths"`
+	Signals       []string `json:"signals"`
+	StrongSignals []string `json:"strong_signals,omitempty"`
+	HasPlan       bool     `json:"has_plan"`
+	HasChanges    bool     `json:"has_changes"`
+	ForceInclude  []string `json:"force_include,omitempty"`
+	ForceExclude  []string `json:"force_exclude,omitempty"`
 }
 
 type Result struct {
-	Mode     Mode           `json:"mode"`
-	Profile  config.Profile `json:"profile"`
-	Limit    int            `json:"limit"`
-	Selected []Decision     `json:"selected"`
-	Excluded []Decision     `json:"excluded"`
+	Mode           Mode           `json:"mode"`
+	Profile        config.Profile `json:"profile"`
+	Limit          int            `json:"limit"`
+	Resolution     string         `json:"resolution,omitempty"`
+	Degraded       bool           `json:"degraded,omitempty"`
+	FallbackReason string         `json:"fallback_reason,omitempty"`
+	Selected       []Decision     `json:"selected"`
+	Excluded       []Decision     `json:"excluded"`
 }
 
 type Decision struct {
-	Role    string   `json:"role"`
-	Reasons []Reason `json:"reasons"`
+	Role      string   `json:"role"`
+	Protected bool     `json:"protected"`
+	Source    string   `json:"source,omitempty"`
+	Reasons   []Reason `json:"reasons"`
 }
 
 type Reason struct {
@@ -62,119 +73,25 @@ type Reason struct {
 	RuleIndex      *int     `json:"rule_index,omitempty"`
 	MatchedPaths   []string `json:"matched_paths,omitempty"`
 	MatchedSignals []string `json:"matched_signals,omitempty"`
+	EvidenceRefs   []string `json:"evidence_refs,omitempty"`
+	Confidence     *float64 `json:"confidence,omitempty"`
 }
 
 type roleState struct {
-	role      string
-	required  bool
-	forced    bool
-	candidate bool
-	excluded  bool
-	reasons   []Reason
+	role                string
+	required            bool
+	forced              bool
+	candidate           bool
+	excluded            bool
+	matchedPath         bool
+	matchedStrongSignal bool
+	reasons             []Reason
 }
 
 func Route(cfg config.Config, input Input) (Result, error) {
-	if err := config.Validate(cfg); err != nil {
-		return Result{}, fmt.Errorf("route with configuration: %w", err)
-	}
-
-	mode, err := resolveMode(input)
+	mode, limit, states, err := classifyRoles(cfg, input)
 	if err != nil {
 		return Result{}, err
-	}
-	limit := cfg.Limits.MaxRolesStandard
-	if cfg.Profile == config.ProfileThorough {
-		limit = cfg.Limits.MaxRolesThorough
-	}
-
-	include, err := roleSet(input.ForceInclude, "force_include")
-	if err != nil {
-		return Result{}, err
-	}
-	exclude, err := roleSet(input.ForceExclude, "force_exclude")
-	if err != nil {
-		return Result{}, err
-	}
-	for role := range include {
-		if _, conflict := exclude[role]; conflict {
-			return Result{}, fmt.Errorf("%w: role %q is both force-included and force-excluded", ErrInvalidInput, role)
-		}
-	}
-
-	states := make(map[string]*roleState, len(config.KnownRoles()))
-	for _, role := range config.KnownRoles() {
-		states[role] = &roleState{role: role}
-	}
-
-	requiredRole := requiredRoleForMode(mode)
-	if requiredRole != "" {
-		state := states[requiredRole]
-		if !cfg.Roles[requiredRole].Enabled {
-			return Result{}, fmt.Errorf("%w: mode %q requires disabled role %q", ErrInvalidInput, mode, requiredRole)
-		}
-		if _, explicitlyExcluded := exclude[requiredRole]; explicitlyExcluded {
-			return Result{}, fmt.Errorf("%w: mode %q requires force-excluded role %q", ErrInvalidInput, mode, requiredRole)
-		}
-		state.required = true
-		state.candidate = true
-		state.reasons = append(state.reasons, Reason{
-			Code:   ReasonRequiredByMode,
-			Detail: fmt.Sprintf("%s is mandatory for %s reviews", requiredRole, mode),
-		})
-	}
-
-	paths, err := normalizePaths(input.ChangedPaths)
-	if err != nil {
-		return Result{}, err
-	}
-	signals := normalizedSignals(input.Signals)
-	for i, rule := range cfg.Routing {
-		matchedPaths, matchedSignals, matched, err := matchRule(rule, paths, signals)
-		if err != nil {
-			return Result{}, fmt.Errorf("match routing rule %d: %w", i, err)
-		}
-		if !matched {
-			continue
-		}
-		for _, role := range rule.AddRoles {
-			state := states[role]
-			state.candidate = true
-			ruleIndex := i
-			state.reasons = append(state.reasons, Reason{
-				Code:           ReasonRoutingRule,
-				Detail:         routingDetail(matchedPaths, matchedSignals),
-				RuleIndex:      &ruleIndex,
-				MatchedPaths:   matchedPaths,
-				MatchedSignals: matchedSignals,
-			})
-		}
-	}
-
-	for role := range include {
-		if !cfg.Roles[role].Enabled {
-			return Result{}, fmt.Errorf("%w: cannot force-include disabled role %q", ErrInvalidInput, role)
-		}
-		state := states[role]
-		state.candidate = true
-		state.forced = true
-		state.reasons = append(state.reasons, Reason{
-			Code:   ReasonForcedInclusion,
-			Detail: "role explicitly included by the user",
-		})
-	}
-
-	for _, role := range config.KnownRoles() {
-		state := states[role]
-		if !cfg.Roles[role].Enabled {
-			state.excluded = true
-			state.reasons = append(state.reasons, Reason{Code: ReasonDisabled, Detail: "role is disabled by configuration"})
-			continue
-		}
-		if _, explicitlyExcluded := exclude[role]; explicitlyExcluded {
-			state.candidate = false
-			state.excluded = true
-			state.reasons = append(state.reasons, Reason{Code: ReasonExplicitExclusion, Detail: "role explicitly excluded by the user"})
-		}
 	}
 
 	candidates := make([]*roleState, 0, len(states))
@@ -239,6 +156,116 @@ func Route(cfg config.Config, input Input) (Result, error) {
 	}
 
 	return result, nil
+}
+
+func classifyRoles(cfg config.Config, input Input) (Mode, int, map[string]*roleState, error) {
+	if err := config.Validate(cfg); err != nil {
+		return "", 0, nil, fmt.Errorf("route with configuration: %w", err)
+	}
+
+	mode, err := resolveMode(input)
+	if err != nil {
+		return "", 0, nil, err
+	}
+	limit := cfg.Limits.MaxRolesStandard
+	if cfg.Profile == config.ProfileThorough {
+		limit = cfg.Limits.MaxRolesThorough
+	}
+
+	include, err := roleSet(input.ForceInclude, "force_include")
+	if err != nil {
+		return "", 0, nil, err
+	}
+	exclude, err := roleSet(input.ForceExclude, "force_exclude")
+	if err != nil {
+		return "", 0, nil, err
+	}
+	for role := range include {
+		if _, conflict := exclude[role]; conflict {
+			return "", 0, nil, fmt.Errorf("%w: role %q is both force-included and force-excluded", ErrInvalidInput, role)
+		}
+	}
+
+	states := make(map[string]*roleState, len(config.KnownRoles()))
+	for _, role := range config.KnownRoles() {
+		states[role] = &roleState{role: role}
+	}
+
+	requiredRole := requiredRoleForMode(mode)
+	if requiredRole != "" {
+		state := states[requiredRole]
+		if !cfg.Roles[requiredRole].Enabled {
+			return "", 0, nil, fmt.Errorf("%w: mode %q requires disabled role %q", ErrInvalidInput, mode, requiredRole)
+		}
+		if _, explicitlyExcluded := exclude[requiredRole]; explicitlyExcluded {
+			return "", 0, nil, fmt.Errorf("%w: mode %q requires force-excluded role %q", ErrInvalidInput, mode, requiredRole)
+		}
+		state.required = true
+		state.candidate = true
+		state.reasons = append(state.reasons, Reason{
+			Code:   ReasonRequiredByMode,
+			Detail: fmt.Sprintf("%s is mandatory for %s reviews", requiredRole, mode),
+		})
+	}
+
+	paths, err := normalizePaths(input.ChangedPaths)
+	if err != nil {
+		return "", 0, nil, err
+	}
+	signals := normalizedSignals(input.Signals)
+	strongSignals := normalizedSignals(input.StrongSignals)
+	for i, rule := range cfg.Routing {
+		matchedPaths, matchedSignals, matched, err := matchRule(rule, paths, signals)
+		if err != nil {
+			return "", 0, nil, fmt.Errorf("match routing rule %d: %w", i, err)
+		}
+		if !matched {
+			continue
+		}
+		for _, role := range rule.AddRoles {
+			state := states[role]
+			state.candidate = true
+			state.matchedPath = state.matchedPath || len(matchedPaths) > 0
+			state.matchedStrongSignal = state.matchedStrongSignal || intersects(matchedSignals, strongSignals)
+			ruleIndex := i
+			state.reasons = append(state.reasons, Reason{
+				Code:           ReasonRoutingRule,
+				Detail:         routingDetail(matchedPaths, matchedSignals),
+				RuleIndex:      &ruleIndex,
+				MatchedPaths:   matchedPaths,
+				MatchedSignals: matchedSignals,
+			})
+		}
+	}
+
+	for role := range include {
+		if !cfg.Roles[role].Enabled {
+			return "", 0, nil, fmt.Errorf("%w: cannot force-include disabled role %q", ErrInvalidInput, role)
+		}
+		state := states[role]
+		state.candidate = true
+		state.forced = true
+		state.reasons = append(state.reasons, Reason{
+			Code:   ReasonForcedInclusion,
+			Detail: "role explicitly included by the user",
+		})
+	}
+
+	for _, role := range config.KnownRoles() {
+		state := states[role]
+		if !cfg.Roles[role].Enabled {
+			state.excluded = true
+			state.reasons = append(state.reasons, Reason{Code: ReasonDisabled, Detail: "role is disabled by configuration"})
+			continue
+		}
+		if _, explicitlyExcluded := exclude[role]; explicitlyExcluded {
+			state.candidate = false
+			state.excluded = true
+			state.reasons = append(state.reasons, Reason{Code: ReasonExplicitExclusion, Detail: "role explicitly excluded by the user"})
+		}
+	}
+
+	return mode, limit, states, nil
 }
 
 func resolveMode(input Input) (Mode, error) {
@@ -417,6 +444,11 @@ func cloneReasons(reasons []Reason) []Reason {
 		result[i] = reason
 		result[i].MatchedPaths = append([]string(nil), reason.MatchedPaths...)
 		result[i].MatchedSignals = append([]string(nil), reason.MatchedSignals...)
+		result[i].EvidenceRefs = append([]string(nil), reason.EvidenceRefs...)
+		if reason.Confidence != nil {
+			confidence := *reason.Confidence
+			result[i].Confidence = &confidence
+		}
 	}
 	return result
 }

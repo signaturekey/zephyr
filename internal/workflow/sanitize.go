@@ -44,3 +44,11 @@ func sanitizeVerdicts(value schema.EvidenceVerdictEnvelope, policy redaction.Pol
 	}
 	return value
 }
+
+func sanitizeSemanticRouting(value schema.SemanticRoutingEnvelope, policy redaction.Policy) schema.SemanticRoutingEnvelope {
+	for index := range value.Decisions {
+		value.Decisions[index].Reason = policy.Text(value.Decisions[index].Reason)
+		value.Decisions[index].EvidenceRefs = policy.Strings(value.Decisions[index].EvidenceRefs)
+	}
+	return value
+}

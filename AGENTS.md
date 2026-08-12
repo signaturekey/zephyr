@@ -123,6 +123,7 @@ Codex or Claude Code harness
   |-- reads repository instructions
   |-- snapshots Jira, Confluence, and Bitbucket through available MCP
   |-- invokes the Zephyr CLI for deterministic stages
+  |-- dispatches one isolated semantic-routing process
   |-- dispatches isolated reviewer processes
   |-- dispatches one isolated evidence-gate process
   '-- presents the final artifacts
@@ -131,7 +132,7 @@ Codex or Claude Code harness
 Deterministic Go core
   |-- run and Git snapshot lifecycle
   |-- normalized review packet
-  |-- routing
+  |-- protected routing policy and semantic-decision validation
   |-- JSON Schema validation
   |-- deterministic evidence precheck
   |-- verdict integrity and deduplication
@@ -148,7 +149,7 @@ The core must remain deterministic and must not call an LLM, MCP server, or prov
 - Git metadata and diff collection;
 - run creation, locking, manifests, and stale detection;
 - context normalization and immutable packet generation;
-- routing signals and role selection;
+- protected routing signals, semantic request generation, decision validation, conservative fallback, and final role selection;
 - candidate and verdict schema validation;
 - file, line, category, severity, and scope prechecks;
 - verdict-set integrity;
@@ -163,6 +164,7 @@ A harness package owns:
 - activation from a user request;
 - discovery and mandatory per-run declaration of Jira, Confluence, and Bitbucket capabilities;
 - read-only business-context collection and provenance;
+- isolated semantic-router dispatch;
 - isolated reviewer dispatch;
 - the separate evidence-gate dispatch;
 - retry and failure classification at the process boundary;
@@ -295,7 +297,9 @@ Every reviewer receives the same immutable packet identity. Role-specific dispat
 
 ### 6.7 Routing
 
-The core selects roles deterministically. The harness or an LLM must not invent routing decisions. routing.json records the selected and excluded roles and the reason for each decision.
+Routing is hybrid. The deterministic core protects roles required by mode, explicit user inclusion, matching changed paths, project configuration, or strong changed-diff signals. Because the reviewed diff is untrusted, `security-auditor` is also protected in implementation and alignment modes unless the user explicitly excludes it. The core then emits an immutable `routing-request.json` containing every remaining optional role and its closed scope. The harness dispatches one isolated semantic router against the frozen packet; the core schema-validates its complete decision set and produces final `routing.json`.
+
+The semantic router may include or exclude only optional candidates. It cannot remove protected roles, create roles, change limits, or start reviewers. Every decision cites frozen evidence provenance. On process failure, timeout, invalid output, incomplete decisions, or invariant violation, the core includes every unresolved candidate through a conservative deterministic fallback. Reviewers cannot start until routing is final.
 
 ### 6.8 Reviewer dispatch
 
@@ -351,7 +355,7 @@ The core verifies that:
 - rejected and human-review verdicts have reasons;
 - duplicate references target a valid canonical candidate and form no cycle.
 
-The core then deduplicates accepted findings, preserves source roles, applies stable ordering and report limits, and writes review.json.
+The core then deduplicates accepted findings, preserves source roles, applies stable ordering, and writes review.json.
 
 ### 6.12 Rendering and stale detection
 
@@ -427,16 +431,19 @@ The evidence gate is a validation role, not a reviewer. It runs once after all r
 
 ## 8. Routing policy
 
-Routing combines the resolved mode, changed paths, semantic signals, project configuration, and explicit user include or exclude overrides.
+Routing combines deterministic protected signals with one schema-constrained semantic classification over the immutable packet.
 
 Rules:
 
 - code-reviewer is required for implementation and alignment;
 - architect-reviewer is required for plan;
+- security-auditor is protected for implementation and alignment unless explicitly excluded by the user;
 - a required role cannot be disabled or excluded for that mode;
 - a user may explicitly include or exclude optional roles;
 - each role runs at most once;
-- every matching relevant role is selected until the configured profile limit is reached;
+- protected roles are preserved before optional roles at the configured profile limit;
+- the semantic router decides every remaining optional role exactly once;
+- invalid or unavailable semantic routing includes every unresolved candidate through fallback;
 - evidence-gate is outside the reviewer limit and runs once;
 - max_parallel_reviewers controls concurrency, not total coverage.
 
@@ -641,6 +648,8 @@ zephyr context add
 zephyr context capability
 zephyr context limit
 zephyr route
+zephyr validate-routing
+zephyr fallback-routing
 zephyr validate-candidates
 zephyr validate-verdicts
 zephyr mark-failed
@@ -672,6 +681,7 @@ A run directory contains, as applicable:
 |-- packet/
 |   |-- review-packet.json
 |   '-- truncation.json
+|-- routing-request.json
 |-- routing.json
 |-- candidates/
 |-- evidence/
@@ -699,7 +709,7 @@ review.md summarizes:
 - failed roles and stages;
 - rejected-candidate statistics and artifact paths.
 
-Default display includes all P0, up to five P1, up to three P2, and P3 only when requested or when no higher-severity finding exists.
+Default display includes findings up to the configured final finding limit, ordered by severity P0-P3.
 
 If there are no validated findings, say that no evidence-supported problems were found in the reviewed scope. Never claim that the code or specification is fully correct.
 
@@ -759,7 +769,7 @@ Cover at minimum:
 - rename, delete, binary, generated, submodule, and untracked cases;
 - Git failure, timeout, cancellation, filters, and unusual path names;
 - configuration merge and strict validation;
-- routing matches, limits, priorities, inclusion, and exclusion;
+- protected routing matches, semantic decision validation, fallback, limits, priorities, inclusion, and exclusion;
 - schema failures and invalid locations;
 - evidence precheck and verdict-set integrity;
 - deduplication and stable report ordering;
@@ -827,7 +837,7 @@ Zephyr is acceptable when:
 3. Specification review works without a Git diff.
 4. Alignment review uses the specification, diff, and available business requirements.
 5. Jira, Confluence, and Bitbucket access is harness-provided and read-only.
-6. Routing is deterministic, explainable, persisted, and can select every relevant configured role.
+6. Routing preserves deterministic safety constraints, schema-validates isolated semantic decisions, falls back conservatively, remains explainable and persisted, and can select every relevant configured role.
 7. Reviewer contexts are isolated and share only the immutable snapshot.
 8. Independent roles can run concurrently with an isolated sequential fallback.
 9. Candidate and verdict output is schema validated.
@@ -852,7 +862,7 @@ The implementation sequence is:
 3. Claude Code harness using the same protocol and roles.
 4. Pilot evaluation and calibration.
 
-The current protocol includes Go, TypeScript/frontend, reliability, messaging, infrastructure, non-relational storage, SQL, contract, security, QA, architecture, simplification, and Markdown-skill review roles. Extend it by adding a narrow role, deterministic routing signals, schemas or category constraints, harness assets, and tests; do not add language-specific policy to the core.
+The current protocol includes Go, TypeScript/frontend, reliability, messaging, infrastructure, non-relational storage, SQL, contract, security, QA, architecture, simplification, and Markdown-skill review roles. Extend it by adding a narrow role, its semantic scope and protected routing signals, schemas or category constraints, harness assets, and tests; do not add language-specific review policy to the core.
 
 Potential future work, only after protocol quality is stable:
 

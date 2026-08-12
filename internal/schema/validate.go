@@ -15,6 +15,7 @@ const (
 	reviewInputSchema       = "review-input.schema.json"
 	candidateFindingsSchema = "candidate-findings.schema.json"
 	evidenceVerdictSchema   = "evidence-verdict.schema.json"
+	semanticRoutingSchema   = "semantic-routing.schema.json"
 )
 
 var ErrInvalidDocument = errors.New("invalid zephyr protocol document")
@@ -51,6 +52,24 @@ func ValidateVerdictBytes(data []byte) (EvidenceVerdictEnvelope, error) {
 	}
 	if err := validateVerdictSemantics(envelope); err != nil {
 		return EvidenceVerdictEnvelope{}, err
+	}
+	return envelope, nil
+}
+
+func ValidateSemanticRoutingBytes(data []byte) (SemanticRoutingEnvelope, error) {
+	if err := validateDocument(semanticRoutingSchema, data); err != nil {
+		return SemanticRoutingEnvelope{}, err
+	}
+	var envelope SemanticRoutingEnvelope
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return SemanticRoutingEnvelope{}, fmt.Errorf("%w: decode semantic routing: %v", ErrInvalidDocument, err)
+	}
+	seen := make(map[string]struct{}, len(envelope.Decisions))
+	for _, decision := range envelope.Decisions {
+		if _, duplicate := seen[decision.Role]; duplicate {
+			return SemanticRoutingEnvelope{}, fmt.Errorf("%w: duplicate semantic routing decision for role %q", ErrInvalidDocument, decision.Role)
+		}
+		seen[decision.Role] = struct{}{}
 	}
 	return envelope, nil
 }

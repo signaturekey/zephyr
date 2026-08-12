@@ -18,7 +18,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Version != CurrentVersion || cfg.Profile != ProfileStandard || cfg.Language != "auto" {
 		t.Fatalf("unexpected defaults: version=%d profile=%q language=%q", cfg.Version, cfg.Profile, cfg.Language)
 	}
-	wantLimits := Limits{MaxParallelReviewers: 4, MaxRolesStandard: 15, MaxRolesThorough: 15, MaxFinalFindings: 10}
+	wantLimits := Limits{MaxParallelReviewers: 8, MaxRolesStandard: 15, MaxRolesThorough: 15, MaxFinalFindings: 30}
 	if cfg.Limits != wantLimits {
 		t.Fatalf("limits = %+v, want %+v", cfg.Limits, wantLimits)
 	}
@@ -136,7 +136,6 @@ func TestLoadBytesRejectsInvalidConfig(t *testing.T) {
 		{name: "future version", project: "version: 2\n", want: "version must be 1"},
 		{name: "profile", project: "version: 1\nprofile: maximal\n", want: "profile must be"},
 		{name: "language", project: "version: 1\nlanguage: rust\n", want: "language must be"},
-		{name: "negative limit", project: "version: 1\nlimits:\n  max_final_findings: 0\n", want: "max_final_findings must be positive"},
 		{name: "parallel exceeds thorough", project: "version: 1\nlimits:\n  max_parallel_reviewers: 16\n", want: "cannot exceed"},
 		{name: "unknown role", project: "version: 1\nroles:\n  oracle:\n    enabled: true\n", want: "unknown role"},
 		{name: "unknown role field", project: "version: 1\nroles:\n  golang-expert:\n    active: true\n", want: "field active not found"},

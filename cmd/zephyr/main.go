@@ -30,6 +30,8 @@ type CLI struct {
 	Collect            CollectCmd            `cmd:"" help:"Собрать read-only снимок через системный Git."`
 	Context            ContextCmd            `cmd:"" help:"Зафиксировать возможности harness, импортировать бизнес-контекст или добавить ограничения покрытия."`
 	Route              RouteCmd              `cmd:"" help:"Собрать и проверить пакет, затем выбрать роли ревьюеров."`
+	ValidateRouting    ValidateRoutingCmd    `cmd:"" name:"validate-routing" help:"Проверить semantic routing и зафиксировать итоговый набор ролей."`
+	FallbackRouting    FallbackRoutingCmd    `cmd:"" name:"fallback-routing" help:"Завершить routing консервативным deterministic fallback."`
 	ValidateCandidates ValidateCandidatesCmd `cmd:"" name:"validate-candidates" help:"Проверить JSON одного изолированного ревьюера и выполнить precheck."`
 	ValidateVerdicts   ValidateVerdictsCmd   `cmd:"" name:"validate-verdicts" help:"Проверить JSON evidence-gate относительно точного набора кандидатов."`
 	MarkFailed         MarkFailedCmd         `cmd:"" name:"mark-failed" help:"Зафиксировать сбой ревьюера или evidence-gate, не теряя остальные результаты."`
@@ -269,6 +271,36 @@ func (command *RouteCmd) Run(app *runtime) error {
 	result, err := app.service.Route(app.ctx, workflow.RouteOptions{
 		RunID: command.RunID, ForceInclude: command.AddRole, ForceExclude: command.ExcludeRole,
 	})
+	if err != nil {
+		return err
+	}
+	return emit(app.stdout, result)
+}
+
+type ValidateRoutingCmd struct {
+	RunID string `name:"run" required:"" help:"ID запуска."`
+	Input string `required:"" help:"JSON-файл semantic router или - для stdin."`
+}
+
+func (command *ValidateRoutingCmd) Run(app *runtime) error {
+	data, err := readInput(app.stdin, command.Input, 8<<20)
+	if err != nil {
+		return err
+	}
+	result, err := app.service.ValidateRouting(app.ctx, workflow.ValidateRoutingOptions{RunID: command.RunID, Input: data})
+	if err != nil {
+		return err
+	}
+	return emit(app.stdout, result)
+}
+
+type FallbackRoutingCmd struct {
+	RunID  string `name:"run" required:"" help:"ID запуска."`
+	Reason string `required:"" help:"Краткая безопасная причина fallback."`
+}
+
+func (command *FallbackRoutingCmd) Run(app *runtime) error {
+	result, err := app.service.FallbackRouting(app.ctx, workflow.FinalizeRoutingOptions{RunID: command.RunID, Reason: command.Reason})
 	if err != nil {
 		return err
 	}

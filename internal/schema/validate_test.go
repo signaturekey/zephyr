@@ -222,6 +222,7 @@ func TestValidateReviewInputBytes(t *testing.T) {
   "project_instructions": [],
   "sources": {"included":["REVIEW_SPEC.md"],"excluded":[],"unavailable":[]},
   "routing_signals": ["architecture"],
+  "strong_routing_signals": [],
   "coverage_limits": [],
   "restrictions": ["read-only review"]
 }`)
@@ -245,6 +246,25 @@ func TestValidateReviewInputBytes(t *testing.T) {
 			err := ValidateReviewInputBytes([]byte(test.data))
 			assertInvalidDocument(t, err, test.want)
 		})
+	}
+}
+
+func TestValidateSemanticRoutingBytes(t *testing.T) {
+	input := []byte(`{"version":1,"run_id":"run-1","decisions":[{"role":"sql-expert","decision":"exclude","evidence_refs":["scope"],"reason":"outside scope","confidence":0.9}]}`)
+	envelope, err := ValidateSemanticRoutingBytes(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(envelope.Decisions) != 1 || envelope.Decisions[0].Role != "sql-expert" {
+		t.Fatalf("unexpected semantic routing envelope: %#v", envelope)
+	}
+	repeatedEvidence := []byte(`{"version":1,"run_id":"run-1","decisions":[{"role":"sql-expert","decision":"exclude","evidence_refs":["scope","scope"],"reason":"outside scope","confidence":0.9}]}`)
+	if _, err := ValidateSemanticRoutingBytes(repeatedEvidence); err != nil {
+		t.Fatalf("producer-compatible repeated evidence refs should be normalized by routing core: %v", err)
+	}
+	duplicate := []byte(`{"version":1,"run_id":"run-1","decisions":[{"role":"sql-expert","decision":"exclude","evidence_refs":["scope"],"reason":"outside scope","confidence":0.9},{"role":"sql-expert","decision":"include","evidence_refs":["scope"],"reason":"duplicate","confidence":0.9}]}`)
+	if _, err := ValidateSemanticRoutingBytes(duplicate); err == nil {
+		t.Fatal("duplicate semantic role unexpectedly validated")
 	}
 }
 
