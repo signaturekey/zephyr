@@ -136,6 +136,8 @@ Wait for every selected role. A failed or timed-out child becomes a coverage lim
 
 The dispatcher may retry its isolated Codex process once when stderr classifies the failure as `rate-limit`, `provider-unavailable`, `transport`, or `unknown`. The retry uses the byte-identical prompt, a fresh ephemeral process, and a deterministic role-staggered delay of one to four seconds. Authentication, configuration, and parent-sandbox/Codex-state failures are never retried. Raw Codex stderr must not cross the process boundary: on terminal failure, preserve only the safe category, exit status, byte count, and SHA-256 fingerprint in the coverage reason. The orchestrator must not add another process retry.
 
+The dispatcher streams Codex JSON events to a separate bounded recovery process. If Codex completes but `--output-last-message` is missing, recovery may publish the requested output only when the stream contains exactly one agent message, exactly one completed turn, no later error event, and the recovered JSON passes the authoritative Zephyr schema and semantic validation. Normal and recovered outputs must be byte-identical. Recovery is transport hardening, not a model retry or fallback, and never changes the frozen model policy.
+
 Validate each output:
 
 ```text

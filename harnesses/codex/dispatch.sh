@@ -225,7 +225,11 @@ trap cleanup EXIT HUP INT TERM
 prompt_file=$work_dir/prompt.txt
 last_message=$work_dir/last-message.json
 events_file=$work_dir/events.jsonl
+events_pipe=$work_dir/events.pipe
 stderr_file=$work_dir/stderr.log
+recovery_stderr_file=$work_dir/recovery-stderr.log
+recovered_message=$work_dir/recovered-message.json
+codex_status_file=$work_dir/codex-status.txt
 empty_workspace=$work_dir/empty-workspace
 isolated_codex_home=$work_dir/codex-home
 retry_file=$work_dir/retry-directive.txt
@@ -303,6 +307,20 @@ case "$codex_path" in
 esac
 if [ ! -x "$codex_path" ]; then
   echo "zephyr codex dispatch: codex executable is not executable" >&2
+  exit 1
+fi
+
+zephyr_core_bin=${ZEPHYR_CORE_BIN:-zephyr}
+zephyr_core_path=$(command -v "$zephyr_core_bin" 2>/dev/null || true)
+case "$zephyr_core_path" in
+  /*) ;;
+  *)
+    echo "zephyr codex dispatch: Zephyr core executable not found" >&2
+    exit 1
+    ;;
+esac
+if [ ! -x "$zephyr_core_path" ]; then
+  echo "zephyr codex dispatch: Zephyr core executable is not executable" >&2
   exit 1
 fi
 
@@ -973,7 +991,27 @@ else
 fi
 
 invoke_codex() {
-  run_codex_profile "$compatibility_profile" "$execution_model" "$execution_effort" "$execution_fast" "$schema_path" "$prompt_file" "$last_message" "$events_file" "$stderr_file" "$dispatch_timeout"
+  run_codex_profile "$compatibility_profile" "$execution_model" "$execution_effort" "$execution_fast" "$schema_path" "$prompt_file" "$last_message" "$events_pipe" "$stderr_file" "$dispatch_timeout"
+}
+
+start_output_recovery() {
+  rm -f -- "$events_pipe" "$events_file" "$recovery_stderr_file" "$recovered_message" "$codex_status_file"
+  mkfifo "$events_pipe"
+  recovery_command='tee "$1" < "$2" | "$3" recover-codex-output --kind "$4" --input - --output "$5" >/dev/null || exit 1
+    attempts=0
+    while [ ! -s "$6" ] && [ "$attempts" -lt 100 ]; do sleep 0.1; attempts=$((attempts + 1)); done
+    [ "$(sed -n "1p" "$6" 2>/dev/null)" = 0 ] || exit 1
+    ln "$5" "$7"'
+  if command -v setsid >/dev/null 2>&1; then
+    setsid sh -c "$recovery_command" sh "$events_file" "$events_pipe" "$zephyr_core_path" "$kind" "$recovered_message" "$codex_status_file" "$output" 2> "$recovery_stderr_file" &
+  elif command -v perl >/dev/null 2>&1; then
+    perl -MPOSIX=setsid -e 'setsid() or die "setsid: $!\n"; exec @ARGV or die "exec: $!\n"' \
+      sh -c "$recovery_command" sh "$events_file" "$events_pipe" "$zephyr_core_path" "$kind" "$recovered_message" "$codex_status_file" "$output" 2> "$recovery_stderr_file" &
+  else
+    echo "zephyr codex dispatch: setsid or Perl with POSIX::setsid is required for structured output recovery" >&2
+    exit 1
+  fi
+  recovery_pid=$!
 }
 
 attempt=1
@@ -982,13 +1020,36 @@ while :; do
   if [ -e "$last_message" ] || [ -L "$last_message" ]; then
     rm -f -- "$last_message"
   fi
+  start_output_recovery
   if invoke_codex; then
     codex_status=0
   else
     codex_status=$?
   fi
+  printf '%s\n' "$codex_status" > "$codex_status_file"
+  if wait "$recovery_pid"; then
+    recovery_status=0
+  else
+    recovery_status=$?
+  fi
   if [ "$codex_status" -eq 0 ]; then
+    if [ -s "$last_message" ] && [ -s "$output" ]; then
+      if [ "$(hash_file "$last_message")" != "$(hash_file "$output")" ]; then
+        echo "zephyr codex dispatch: Codex output and recovered event output differ" >&2
+        exit 1
+      fi
+    elif [ -s "$last_message" ]; then
+      chmod 600 "$last_message"
+      mv "$last_message" "$output"
+    elif [ ! -s "$output" ] || [ "$recovery_status" -ne 0 ]; then
+      echo "zephyr codex dispatch: isolated Codex process returned no recoverable structured output" >&2
+      exit 1
+    fi
     break
+  fi
+
+  if [ -e "$output" ] || [ -L "$output" ]; then
+    rm -f -- "$output"
   fi
 
   if [ "$codex_status" -eq 124 ]; then
@@ -1016,10 +1077,8 @@ while :; do
   exit 1
 done
 
-if [ ! -s "$last_message" ]; then
+if [ ! -s "$output" ]; then
   echo "zephyr codex dispatch: isolated Codex process returned an empty result" >&2
   exit 1
 fi
-chmod 600 "$last_message"
-mv "$last_message" "$output"
 printf '{"kind":"%s","role":"%s","output":"%s"}\n' "$kind" "$role" "$output"

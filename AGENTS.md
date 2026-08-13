@@ -639,6 +639,8 @@ The main agent orchestrates and hands off results; reviewer processes perform th
 
 Parallel dispatch is preferred. Sequential batching is valid only when it preserves role isolation and the immutable packet.
 
+The dispatcher streams Codex JSON events to a deterministic recovery process in a separate bounded process session. If a successful Codex process emits one complete structured response but fails to materialize `--output-last-message`, recovery may publish that exact response only after requiring exactly one agent message, exactly one completed turn, no later error event, and validation against the authoritative output schema and semantic rules. Recovery may not alter the response, substitute a model, weaken validation, or accept output from a failed Codex process.
+
 
 ## 13. CLI and run artifacts
 
