@@ -174,6 +174,19 @@ $zephyr Проверь текущую ветку относительно main.
 завершился, run получает статус `incomplete`, а candidates не выдаются за
 подтверждённые findings.
 
+### Ревью pull request по ссылке
+
+Codex harness может принять каноническую ссылку на Bitbucket/Stash PR, получить
+его metadata через read-only MCP и подготовить временный приватный checkout вне
+пользовательских репозиториев. Snapshot фиксируется по точным base/head SHA и
+проверяется как `commit-range`; имена веток не используются как immutable
+identity.
+
+Результат возвращается только в чат. Zephyr не публикует PR comments и не
+выставляет approve/decline. Перед handoff harness повторно проверяет head SHA:
+если PR обновился, результат помечается stale и остаётся привязанным к исходному
+snapshot.
+
 <a id="modes"></a>
 ## Режимы и Git scope
 
@@ -442,8 +455,9 @@ model_policy:
 Zephyr не должен:
 
 - изменять проверяемый source или запускать auto-fix;
-- выполнять Git write operations: add, commit, checkout, reset, clean, stash,
-  merge, rebase или push;
+- выполнять Git write operations в пользовательском checkout или существующем
+  проверяемом репозитории: add, commit, checkout, reset, clean, stash, merge,
+  rebase или push;
 - создавать PR и review comments;
 - писать во внешние трекеры, базы знаний или сервисы код-хостинга;
 - читать untracked content без явного согласия;
@@ -453,6 +467,12 @@ Zephyr не должен:
 Git запускается через argv без shell interpolation, с timeout и read-only
 allowlist. Перед worktree-aware операциями Zephyr проверяет Git filters, потому
 что даже `git status` или `git diff` могут запустить внешний process.
+
+Для явной PR-ссылки trusted harness helper может создать Git state только в
+новом mode-0700 disposable-каталоге вне пользовательских checkout. Он фиксирует
+точные base/head SHA, не инициализирует submodules, не сохраняет credentials и
+удаляет только созданный им acquisition root. Go core и его Git adapter остаются
+read-only.
 
 Reviewer получает только role prompt, immutable packet и output schema. Ему
 недоступны live filesystem, Git, shell, MCP, web, memory и другие reviewers.

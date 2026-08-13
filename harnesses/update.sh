@@ -196,7 +196,7 @@ verify_no_unknown_skill_files() {
     case "$relative_file" in
       SKILL.md|references/assets.sha256)
         ;;
-      scripts/dispatch.sh)
+      scripts/dispatch.sh|scripts/acquire-pr.sh)
         if [ "$harness_kind" != codex ]; then
           echo "unexpected installed skill file: $installed_file" >&2
           exit 1
@@ -278,6 +278,7 @@ verify_codex_installation() {
   installed_manifest="$installed_skill/references/assets.sha256"
   require_regular_file "$installed_manifest"
   verify_installed_file "$installed_skill/SKILL.md" "$installed_manifest" "harnesses/codex/SKILL.md"
+  verify_installed_file "$installed_skill/scripts/acquire-pr.sh" "$installed_manifest" "harnesses/codex/acquire-pr.sh"
   verify_installed_file "$installed_skill/scripts/dispatch.sh" "$installed_manifest" "harnesses/codex/dispatch.sh"
   verify_installed_file "$installed_skill/agents/openai.yaml" "$installed_manifest" "harnesses/codex/discovery/agents/openai.yaml"
   verify_manifest_group "$installed_skill" "$installed_manifest" "roles/" "roles" ".md"
