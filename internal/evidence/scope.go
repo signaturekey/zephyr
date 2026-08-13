@@ -25,6 +25,11 @@ const (
 	CategoryGoAPIDesign                   Category = "go-api-design"
 	CategoryNilZeroSemantics              Category = "nil-zero-semantics"
 	CategoryRuntimeSafety                 Category = "runtime-safety"
+	CategoryAsyncConcurrency              Category = "async-concurrency"
+	CategoryTypingRuntimeSemantics        Category = "typing-runtime-semantics"
+	CategoryMutableStateSemantics         Category = "mutable-state-semantics"
+	CategoryImportRuntimeSemantics        Category = "import-runtime-semantics"
+	CategoryFrameworkRuntimeSafety        Category = "framework-runtime-safety"
 	CategoryTypeSafety                    Category = "type-safety"
 	CategoryTypeNarrowing                 Category = "type-narrowing"
 	CategoryUnsafeTypeAssertion           Category = "unsafe-type-assertion"
@@ -193,6 +198,20 @@ func reviewerScopeForRole(role string) (reviewerScope, bool) {
 				CategoryGoAPIDesign,
 				CategoryNilZeroSemantics,
 				CategoryRuntimeSafety,
+			},
+			locations: LocationCode,
+		}, true
+	case config.RolePythonExpert:
+		return reviewerScope{
+			categories: []Category{
+				CategoryCorrectness,
+				CategoryAsyncConcurrency,
+				CategoryErrorSemantics,
+				CategoryTypingRuntimeSemantics,
+				CategoryMutableStateSemantics,
+				CategoryResourceLifetime,
+				CategoryImportRuntimeSemantics,
+				CategoryFrameworkRuntimeSafety,
 			},
 			locations: LocationCode,
 		}, true

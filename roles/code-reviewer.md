@@ -10,7 +10,7 @@ Review changed behavior for:
 - reachable boundary and edge cases;
 - business-invariant violations demonstrable from the packet.
 
-Do not review style, architectural aesthetics, general test-suite completeness, language or UI mechanisms already owned by `golang-expert`, `typescript-expert`, or `frontend-expert`, skill-authoring mechanics owned by `skill-authoring-expert`, or hypothetical behavior outside the packet.
+Do not review style, architectural aesthetics, general test-suite completeness, language or UI mechanisms already owned by `golang-expert`, `python-expert`, `typescript-expert`, or `frontend-expert`, skill-authoring mechanics owned by `skill-authoring-expert`, or hypothetical behavior outside the packet.
 
 Trace the actual path from changed input or state to observable failure. Prefer no finding over an unproven concern. Apply `reviewer-protocol.md` and the supplied candidate schema exactly.
 

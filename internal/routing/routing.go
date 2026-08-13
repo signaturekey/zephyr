@@ -421,6 +421,8 @@ func rolePriority(role string) int {
 		return 35
 	case config.RoleGolangExpert:
 		return 40
+	case config.RolePythonExpert:
+		return 41
 	case config.RoleTypeScriptExpert:
 		return 42
 	case config.RoleFrontendExpert:

@@ -143,6 +143,24 @@ func TestFrontendAndSkillPathsProduceTechnologyAndRoutingSignals(t *testing.T) {
 	}
 }
 
+func TestPythonPathsProduceTechnologyAndRoutingSignals(t *testing.T) {
+	paths := []string{"services/payments/worker.py", "pyproject.toml", "uv.lock"}
+	technologies := detectTechnologies(paths)
+	if !containsString(technologies, "python") {
+		t.Fatalf("python technology missing from %v", technologies)
+	}
+
+	packet := Packet{Mode: "implementation", ChangedFiles: paths}
+	for _, expected := range []string{"python", "observable-behavior"} {
+		if signals := detectRoutingSignals(packet); !containsString(signals, expected) {
+			t.Fatalf("signal %q missing from %v", expected, signals)
+		}
+		if signals := detectStrongRoutingSignals(packet); !containsString(signals, expected) {
+			t.Fatalf("strong signal %q missing from %v", expected, signals)
+		}
+	}
+}
+
 func TestOperationalPathsProduceRoutingSignals(t *testing.T) {
 	packet := Packet{
 		Mode: "implementation",

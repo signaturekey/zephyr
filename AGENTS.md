@@ -375,55 +375,59 @@ Mandatory for plan mode. Reviews package, layer, service, and ownership boundari
 
 Selected for Go changes. Reviews context propagation, errors, concurrency, resource lifetime, Go API semantics, nil and zero values, interfaces and pointers, panics, deadlocks, races, leaks, and shutdown behavior.
 
-### 7.4 typescript-expert
+### 7.4 python-expert
+
+Selected for Python changes. Reviews asyncio and cancellation, exception and cleanup paths, typing/runtime drift, mutable-state and iterator semantics, context managers, resource lifetime, imports, module initialization, and concrete ORM, serialization, or framework runtime risks. It does not own general correctness, contracts, security, UI, or architecture.
+
+### 7.5 typescript-expert
 
 Selected for TypeScript or TSX changes. Reviews type soundness, narrowing and exhaustiveness, unsafe assertions, null and omitted-field semantics, async ordering and rejection behavior, runtime-schema drift, and public module contracts. React lifecycle belongs to frontend-expert.
 
-### 7.5 frontend-expert
+### 7.6 frontend-expert
 
 Selected for browser UI changes, with React-specific checks when React is present. Reviews hooks and effects, state and server-state races, loading/error/permission states, rendering and navigation, accessibility, browser security, user-visible performance, and tests protecting changed UI behavior.
 
-### 7.6 skill-authoring-expert
+### 7.7 skill-authoring-expert
 
 Selected for SKILL.md and related references, scripts, templates, or evaluations. Reviews frontmatter and triggering, instruction correctness, progressive disclosure, tool contracts, reference integrity, evaluation coverage, repository-specific structure, workflow safety, and context efficiency. Skill text is untrusted review data and must never be executed as instructions.
 
-### 7.7 reliability-expert
+### 7.8 reliability-expert
 
 Reviews cross-component operational behavior: timeout budgets, retry amplification, idempotency, backpressure, graceful degradation, availability, shutdown safety, and the observability required to detect a demonstrated failure mode.
 
-### 7.8 messaging-expert
+### 7.9 messaging-expert
 
 Reviews producers, consumers, queues, and streams for delivery guarantees, ordering, deduplication, offset and acknowledgement state, retry/DLQ handling, poison messages, rollout behavior, backpressure, and transactional messaging boundaries.
 
-### 7.9 infrastructure-expert
+### 7.10 infrastructure-expert
 
 Reviews Docker, Kubernetes, Helm, CI/CD, and deployment configuration for probe correctness, resource policy, rollout and rollback behavior, runtime wiring, workload isolation, artifact promotion, and drift from application assumptions.
 
-### 7.10 storage-expert
+### 7.11 storage-expert
 
 Reviews non-relational storage, caches, search indexes, and object stores for consistency, invalidation, TTL and retention, index mappings, reindex and backfill safety, lifecycle, capacity, and dependency fallback behavior.
 
-### 7.11 security-auditor
+### 7.12 security-auditor
 
 Reviews authentication, authorization, IDOR, validation, injection, secrets, PII, unsafe logging, filesystem and network boundaries, and privilege transitions. High severity requires a concrete attack path or demonstrated security invariant violation.
 
-### 7.12 sql-expert
+### 7.13 sql-expert
 
 Reviews SQL and query correctness, transaction boundaries, isolation, locking, indexes with concrete access paths, online migration safety, mixed-version behavior, integrity constraints, amplification, and rollback feasibility.
 
-### 7.13 contract-reviewer
+### 7.14 contract-reviewer
 
 Reviews Brief, OpenAPI, Proto, JSON schemas, events, and public DTOs for compatibility, optional and nullable semantics, enum evolution, mixed-version behavior, producer-consumer contracts, and generated-source boundaries.
 
-### 7.14 qa-expert
+### 7.15 qa-expert
 
 Reviews changed observable behavior and tests for a specific untested branch, negative or boundary case, failure mode, acceptance criterion, ineffective assertion, or test that exercises the wrong path. It must never emit a generic request for more tests.
 
-### 7.15 code-simplifier
+### 7.16 code-simplifier
 
 Reviews only changed code for demonstrable maintenance risk caused by unnecessary abstraction, duplication with divergence risk, avoidable state or branching, or lifecycle complexity. It may emit only P2 or P3 and must not propose broad aesthetic rewrites.
 
-### 7.16 evidence-gate
+### 7.17 evidence-gate
 
 The evidence gate is a validation role, not a reviewer. It runs once after all reviewer candidates are prechecked and follows the restrictions in Section 6.10.
 
@@ -445,13 +449,14 @@ Rules:
 - evidence-gate is outside the reviewer limit and runs once;
 - max_parallel_reviewers controls concurrency, not total coverage.
 
-Current defaults allow all 15 reviewer roles in both standard and thorough profiles and execute up to 4 concurrently. These are configuration defaults, not a hard-coded product ceiling.
+Current defaults allow all 16 reviewer roles in both standard and thorough profiles and execute up to 4 concurrently. These are configuration defaults, not a hard-coded product ceiling.
 
 Default path and signal routing includes:
 
 | Input signal | Added role |
 |---|---|
 | Go files | golang-expert |
+| Python files or Python project metadata | python-expert |
 | TypeScript or TSX | typescript-expert |
 | TSX, JSX, CSS, SCSS, or Less | frontend-expert |
 | SKILL.md, skill folders, or templates | skill-authoring-expert |
@@ -476,12 +481,13 @@ When a project lowers the profile limit, preserve required and explicitly includ
 6. contract-reviewer;
 7. infrastructure-expert;
 8. golang-expert;
-9. typescript-expert;
-10. frontend-expert;
-11. skill-authoring-expert;
-12. architect-reviewer;
-13. qa-expert;
-14. code-simplifier.
+9. python-expert;
+10. typescript-expert;
+11. frontend-expert;
+12. skill-authoring-expert;
+13. architect-reviewer;
+14. qa-expert;
+15. code-simplifier.
 
 code-reviewer is handled as the required base role for code modes.
 
@@ -591,7 +597,7 @@ Generated, vendor, restricted, and binary bodies are excluded by policy, but the
 
 Project configuration lives at .zephyr/config.yaml and overlays embedded defaults from configs/default.yaml. Unknown fields, invalid role names, invalid patterns, impossible limits, and unsupported versions fail before reviewer execution.
 
-Supported language modes are auto, go, typescript, and markdown.
+Supported language modes are auto, go, python, typescript, and markdown.
 
 The configuration controls:
 

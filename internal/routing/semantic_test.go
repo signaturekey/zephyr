@@ -62,6 +62,26 @@ func TestSemanticRoutingCannotRemovePathProtectedRole(t *testing.T) {
 	}
 }
 
+func TestSemanticRoutingProtectsPythonPathRole(t *testing.T) {
+	request, err := PrepareSemantic(mustConfig(t, nil), Input{
+		Mode: ModeImplementation, HasChanges: true,
+		ChangedPaths: []string{"services/payments/worker.py"}, StrongSignals: []string{"python"},
+	}, "run-python", strings.Repeat("a", 64), []EvidenceSource{{ID: "scope", Kind: "scope", Source: "packet"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !decisionProtected(request.Protected, config.RolePythonExpert) {
+		t.Fatalf("python path role is not protected: %#v", request.Protected)
+	}
+	result, err := FallbackSemantic(request, "router unavailable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Selected) != len(config.KnownRoles()) || !decisionPresent(result.Selected, config.RolePythonExpert) {
+		t.Fatalf("fallback omitted python expert: %#v", result.Selected)
+	}
+}
+
 func TestSemanticRoutingProtectsSecurityAuditorFromUntrustedDiff(t *testing.T) {
 	request, err := PrepareSemantic(mustConfig(t, nil), Input{
 		Mode: ModeImplementation, HasChanges: true, ChangedPaths: []string{"internal/harmless.go"},

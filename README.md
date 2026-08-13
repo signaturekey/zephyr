@@ -230,6 +230,7 @@ Hybrid routing защищает роли по mode, user override и changed pat
 | `code-reviewer` | Функциональная корректность, control/data flow и error handling |
 | `architect-reviewer` | Границы компонентов, зависимости, rollout и failure modes |
 | `golang-expert` | Go API, context, errors, concurrency и lifetime ресурсов |
+| `python-expert` | Python runtime, asyncio, exceptions, typing и lifetime ресурсов |
 | `typescript-expert` | Type soundness, nullability, async semantics и runtime drift |
 | `frontend-expert` | React lifecycle, UI-состояния, accessibility и browser behavior |
 | `skill-authoring-expert` | `SKILL.md`, references, scripts, templates и evals |
@@ -355,8 +356,8 @@ model_policy:
 
 limits:
   max_parallel_reviewers: 4
-  max_roles_standard: 15
-  max_roles_thorough: 15
+  max_roles_standard: 16
+  max_roles_thorough: 16
   max_final_findings: 30
 
 roles:
@@ -377,7 +378,7 @@ redaction:
     - "private/**"
 ```
 
-`language` принимает `auto`, `go`, `typescript` или `markdown`. Неизвестные
+`language` принимает `auto`, `go`, `python`, `typescript` или `markdown`. Неизвестные
 поля, роли, globs и некорректные limits останавливают run до запуска моделей.
 
 Списки routing и path policies дополняют defaults. Scalar values и отдельные

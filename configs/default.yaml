@@ -23,6 +23,7 @@ model_policy:
           model: gpt-5.6-sol
           effort: high
         golang-expert: {}
+        python-expert: {}
         typescript-expert: {}
         frontend-expert: {}
         reliability-expert:
@@ -49,8 +50,8 @@ model_policy:
 
 limits:
   max_parallel_reviewers: 8
-  max_roles_standard: 15
-  max_roles_thorough: 15
+  max_roles_standard: 16
+  max_roles_thorough: 16
   max_final_findings: 30
 
 roles:
@@ -59,6 +60,8 @@ roles:
   architect-reviewer:
     enabled: true
   golang-expert:
+    enabled: true
+  python-expert:
     enabled: true
   typescript-expert:
     enabled: true
@@ -89,6 +92,20 @@ routing:
   - when:
       paths: ["**/*.go"]
     add_roles: ["golang-expert"]
+  - when:
+      paths:
+        [
+          "**/*.py",
+          "pyproject.toml",
+          "**/pyproject.toml",
+          "requirements*.txt",
+          "**/requirements*.txt",
+          "poetry.lock",
+          "**/poetry.lock",
+          "uv.lock",
+          "**/uv.lock",
+        ]
+    add_roles: ["python-expert"]
   - when:
       paths: ["**/*.ts", "**/*.tsx"]
     add_roles: ["typescript-expert"]
@@ -153,6 +170,9 @@ routing:
   - when:
       signals: ["typescript"]
     add_roles: ["typescript-expert"]
+  - when:
+      signals: ["python"]
+    add_roles: ["python-expert"]
   - when:
       signals: ["frontend"]
     add_roles: ["frontend-expert"]

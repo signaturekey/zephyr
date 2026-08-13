@@ -371,6 +371,7 @@ func roleScope(role string) string {
 		config.RoleCodeReviewer:         "functional correctness of implementation changes",
 		config.RoleArchitectReviewer:    "architecture, ownership, compatibility, rollout, and specification completeness",
 		config.RoleGolangExpert:         "Go runtime, concurrency, errors, resources, and API semantics",
+		config.RolePythonExpert:         "Python runtime, async, exceptions, types, mutability, resources, and import semantics",
 		config.RoleTypeScriptExpert:     "TypeScript type and runtime contract safety",
 		config.RoleFrontendExpert:       "browser UI, React lifecycle, accessibility, and user-visible behavior",
 		config.RoleSkillAuthoringExpert: "SKILL.md structure, triggering, references, workflow safety, and eval coverage",

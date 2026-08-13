@@ -31,6 +31,23 @@ func TestRouteImplementationSelectsBaseAndGoRoles(t *testing.T) {
 	}
 }
 
+func TestRoutePythonChangesSelectPythonExpert(t *testing.T) {
+	result, err := Route(mustConfig(t, nil), Input{
+		Mode: ModeImplementation, ChangedPaths: []string{"services/payments/worker.py"}, HasChanges: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{config.RoleCodeReviewer, "python-expert"}
+	if got := decisionRoles(result.Selected); !reflect.DeepEqual(got, want) {
+		t.Fatalf("selected roles = %v, want %v", got, want)
+	}
+	decision := decisionForRole(result.Selected, "python-expert")
+	if reason := reasonWithCode(*decision, ReasonRoutingRule); reason == nil || !reflect.DeepEqual(reason.MatchedPaths, []string{"services/payments/worker.py"}) {
+		t.Fatalf("Python role lacks path evidence: %+v", decision)
+	}
+}
+
 func TestRouteTypeScriptFrontendSelectsSpecialists(t *testing.T) {
 	result, err := Route(mustConfig(t, nil), Input{
 		Mode:         ModeImplementation,

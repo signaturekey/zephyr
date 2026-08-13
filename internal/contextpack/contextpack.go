@@ -684,6 +684,8 @@ func detectTechnologies(paths []string) []string {
 			set["api-contract"] = struct{}{}
 		case strings.HasSuffix(lower, ".go"):
 			set["go"] = struct{}{}
+		case isPythonPath(lower):
+			set["python"] = struct{}{}
 		case strings.HasSuffix(lower, ".tsx"):
 			set["frontend"] = struct{}{}
 			set["typescript"] = struct{}{}
@@ -758,6 +760,7 @@ func detectRoutingSignals(packet Packet) []string {
 		base := filepath.Base(lower)
 		isTypeScript := strings.HasSuffix(lower, ".ts") || strings.HasSuffix(lower, ".tsx") ||
 			base == "tsconfig.json" || strings.HasPrefix(base, "tsconfig.")
+		isPython := isPythonPath(lower)
 		isFrontend := strings.HasSuffix(lower, ".tsx") || strings.HasSuffix(lower, ".jsx") ||
 			strings.HasSuffix(lower, ".css") || strings.HasSuffix(lower, ".scss") || strings.HasSuffix(lower, ".less")
 		isSkill := base == "skill.md" || base == "agents.md" || base == "claude.md" || strings.HasPrefix(lower, "template/") || strings.Contains(lower, "/skills/")
@@ -774,6 +777,9 @@ func detectRoutingSignals(packet Packet) []string {
 			strings.Contains(pathWithBoundaries, "/search/")
 		if isTypeScript {
 			signals = append(signals, "typescript")
+		}
+		if isPython {
+			signals = append(signals, "python")
 		}
 		if isFrontend {
 			signals = append(signals, "frontend")
@@ -797,7 +803,7 @@ func detectRoutingSignals(packet Packet) []string {
 			strings.Contains(lower, "__tests__/") || strings.Contains(lower, ".spec.") || strings.Contains(lower, ".test.") ||
 			strings.Contains(lower, ".cspec.") {
 			signals = append(signals, "tests")
-		} else if strings.HasSuffix(lower, ".go") || isTypeScript || isFrontend || strings.HasSuffix(lower, ".sql") || strings.HasSuffix(lower, ".proto") ||
+		} else if strings.HasSuffix(lower, ".go") || isPython || isTypeScript || isFrontend || strings.HasSuffix(lower, ".sql") || strings.HasSuffix(lower, ".proto") ||
 			strings.Contains(lower, "openapi") || strings.Contains(lower, "/brief/") {
 			signals = append(signals, "observable-behavior")
 		}
@@ -812,6 +818,11 @@ func detectRoutingSignals(packet Packet) []string {
 		signals = append(signals, "large-complexity-delta")
 	}
 	return uniqueSorted(signals)
+}
+
+func isPythonPath(lower string) bool {
+	base := filepath.Base(lower)
+	return strings.HasSuffix(lower, ".py") || base == "pyproject.toml" || strings.HasPrefix(base, "requirements") && strings.HasSuffix(base, ".txt") || base == "poetry.lock" || base == "uv.lock"
 }
 
 // detectStrongRoutingSignals limits deterministic protection to signals derived

@@ -23,7 +23,7 @@ func TestResolveModelPolicyDefaultsUseTieredModels(t *testing.T) {
 	assertPolicyEntry(t, policy, reviewerProcess(RoleSkillAuthoringExpert), ModelSettings{Model: "gpt-5.6-terra", Effort: "medium", Fast: false})
 	assertPolicyEntry(t, policy, reviewerProcess(RoleCodeSimplifier), ModelSettings{Model: "gpt-5.6-terra", Effort: "low", Fast: false})
 	assertPolicyEntry(t, policy, reviewerProcess(RoleSecurityAuditor), ModelSettings{Model: "gpt-5.6-sol", Effort: "high", Fast: false})
-	assertPolicyEntry(t, policy, ProcessEvidenceGate, ModelSettings{Model: "gpt-5.6-sol", Effort: "high", Fast: false})
+	assertPolicyEntry(t, policy, ProcessEvidenceGate, ModelSettings{Model: "gpt-5.6-sol", Effort: "xhigh", Fast: false})
 }
 
 func TestResolveModelPolicyInheritsPartialRoleOverride(t *testing.T) {
@@ -81,7 +81,7 @@ func TestResolveModelPolicyMarshalsStableProcessOrder(t *testing.T) {
 	if got, want := lines[2], "semantic-router\t-\tgpt-5.6-terra\tlow\tfalse"; got != want {
 		t.Fatalf("second process = %q, want %q", got, want)
 	}
-	if got, want := lines[len(lines)-1], "evidence-gate\t-\tgpt-5.6-sol\thigh\tfalse"; got != want {
+	if got, want := lines[len(lines)-1], "evidence-gate\t-\tgpt-5.6-sol\txhigh\tfalse"; got != want {
 		t.Fatalf("last process = %q, want %q", got, want)
 	}
 }

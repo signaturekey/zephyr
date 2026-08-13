@@ -22,6 +22,7 @@ const (
 	RoleCodeReviewer         = "code-reviewer"
 	RoleArchitectReviewer    = "architect-reviewer"
 	RoleGolangExpert         = "golang-expert"
+	RolePythonExpert         = "python-expert"
 	RoleTypeScriptExpert     = "typescript-expert"
 	RoleFrontendExpert       = "frontend-expert"
 	RoleSkillAuthoringExpert = "skill-authoring-expert"
@@ -88,6 +89,7 @@ func KnownRoles() []string {
 		RoleCodeReviewer,
 		RoleArchitectReviewer,
 		RoleGolangExpert,
+		RolePythonExpert,
 		RoleTypeScriptExpert,
 		RoleFrontendExpert,
 		RoleSkillAuthoringExpert,
@@ -159,9 +161,9 @@ func Validate(cfg Config) error {
 		return invalid("profile must be %q or %q, got %q", ProfileStandard, ProfileThorough, cfg.Profile)
 	}
 	switch cfg.Language {
-	case "auto", "go", "typescript", "markdown":
+	case "auto", "go", "python", "typescript", "markdown":
 	default:
-		return invalid("language must be one of auto, go, typescript, or markdown, got %q", cfg.Language)
+		return invalid("language must be one of auto, go, python, typescript, or markdown, got %q", cfg.Language)
 	}
 	if cfg.Limits.MaxParallelReviewers <= 0 {
 		return invalid("limits.max_parallel_reviewers must be positive")

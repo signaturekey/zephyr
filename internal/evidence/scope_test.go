@@ -293,3 +293,19 @@ func TestFrontendAndTypeScriptReviewerScopes(t *testing.T) {
 		})
 	}
 }
+
+func TestPythonReviewerScopeAcceptsPythonCodeCategoriesOnly(t *testing.T) {
+	scope, known := reviewerScopeForRole("python-expert")
+	if !known {
+		t.Fatal("python-expert scope is not registered")
+	}
+	if !containsCategory(scope.categories, Category("async-concurrency")) || scope.locations != LocationCode {
+		t.Fatalf("unexpected Python reviewer scope: %#v", scope)
+	}
+	finding := candidate("python-expert-001", "python-expert", schema.SeverityP2)
+	finding.Category = "async-concurrency"
+	finding.Location = schema.FindingLocation{File: "service/worker.py", LineStart: 10}
+	if code, reason := validateReviewerScope(finding); code != "" {
+		t.Fatalf("unexpected scope rejection %q: %s", code, reason)
+	}
+}

@@ -19,6 +19,7 @@ REVIEWERS = (
     "code-reviewer",
     "architect-reviewer",
     "golang-expert",
+    "python-expert",
     "typescript-expert",
     "frontend-expert",
     "skill-authoring-expert",

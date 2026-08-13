@@ -167,7 +167,7 @@ case "$kind" in
     ;;
   reviewer)
     case "$role" in
-      code-reviewer|architect-reviewer|golang-expert|typescript-expert|frontend-expert|skill-authoring-expert|reliability-expert|messaging-expert|infrastructure-expert|storage-expert|security-auditor|sql-expert|contract-reviewer|qa-expert|code-simplifier) ;;
+      code-reviewer|architect-reviewer|golang-expert|python-expert|typescript-expert|frontend-expert|skill-authoring-expert|reliability-expert|messaging-expert|infrastructure-expert|storage-expert|security-auditor|sql-expert|contract-reviewer|qa-expert|code-simplifier) ;;
       *)
         echo "zephyr codex dispatch: unknown reviewer role" >&2
         exit 2
