@@ -1,22 +1,21 @@
 package schema
 
 import (
-	"errors"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidateCandidateBytesCodeFinding(t *testing.T) {
 	envelope, err := ValidateCandidateBytes([]byte(validCodeCandidates))
-	if err != nil {
-		t.Fatalf("ValidateCandidateBytes: %v", err)
-	}
-	if envelope.Version != ProtocolVersion || envelope.RunID != "run-1" || envelope.Role != "golang-expert" {
-		t.Fatalf("unexpected envelope: %+v", envelope)
-	}
-	if len(envelope.Findings) != 1 || envelope.Findings[0].Severity != SeverityP1 {
-		t.Fatalf("unexpected findings: %+v", envelope.Findings)
-	}
+	require.NoError(t, err, "validate candidate bytes")
+	assert.Equal(t, ProtocolVersion, envelope.Version)
+	assert.Equal(t, "run-1", envelope.RunID)
+	assert.Equal(t, "golang-expert", envelope.Role)
+	require.Len(t, envelope.Findings, 1)
+	assert.Equal(t, SeverityP1, envelope.Findings[0].Severity)
 	if !envelope.Findings[0].Location.IsCode() || envelope.Findings[0].Location.IsArtifact() {
 		t.Fatalf("unexpected location kind: %+v", envelope.Findings[0].Location)
 	}
@@ -270,15 +269,9 @@ func TestValidateSemanticRoutingBytes(t *testing.T) {
 
 func assertInvalidDocument(t *testing.T, err error, contains string) {
 	t.Helper()
-	if err == nil {
-		t.Fatal("validation unexpectedly succeeded")
-	}
-	if !errors.Is(err, ErrInvalidDocument) {
-		t.Fatalf("error %q does not wrap ErrInvalidDocument", err)
-	}
-	if !strings.Contains(err.Error(), contains) {
-		t.Fatalf("error %q does not contain %q", err, contains)
-	}
+	require.Error(t, err, "validation unexpectedly succeeded")
+	assert.ErrorIs(t, err, ErrInvalidDocument)
+	assert.Contains(t, err.Error(), contains)
 }
 
 func stringPointer(value string) *string { return &value }

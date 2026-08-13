@@ -6,6 +6,7 @@ import (
 
 	"github.com/signaturekey/zephyr/internal/contextpack"
 	"github.com/signaturekey/zephyr/internal/schema"
+	"github.com/stretchr/testify/require"
 )
 
 func TestContextPacketConformsToReviewInputSchema(t *testing.T) {
@@ -18,13 +19,9 @@ func TestContextPacketConformsToReviewInputSchema(t *testing.T) {
 			Root: "",
 		},
 	})
-	if err != nil {
-		t.Fatalf("Build packet: %v", err)
-	}
+	require.NoError(t, err, "build packet")
 	data, err := json.Marshal(result.Packet)
-	if err != nil {
-		t.Fatalf("marshal packet: %v", err)
-	}
+	require.NoError(t, err, "marshal packet")
 	if err := schema.ValidateReviewInputBytes(data); err != nil {
 		t.Fatalf("generated packet violates review-input schema: %v\npacket: %s", err, data)
 	}

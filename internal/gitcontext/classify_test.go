@@ -1,8 +1,9 @@
 package gitcontext
 
 import (
-	"slices"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSafeStatePathspecsExcludeExactRestrictedNames(t *testing.T) {
@@ -18,13 +19,9 @@ func TestSafeStatePathspecsExcludeExactRestrictedNames(t *testing.T) {
 		":(top,exclude,literal)renamed.txt",
 		":(top,exclude,literal)SECRET.PEM",
 	} {
-		if !slices.Contains(got, want) {
-			t.Fatalf("safe state pathspecs do not contain %q: %#v", want, got)
-		}
+		assert.Contains(t, got, want, "safe state pathspecs")
 	}
-	if slices.Contains(got, ":(top,exclude,literal)internal/service.go") {
-		t.Fatalf("non-restricted path was excluded: %#v", got)
-	}
+	assert.NotContains(t, got, ":(top,exclude,literal)internal/service.go", "non-restricted path was excluded")
 }
 
 func TestGeneratedTypeScriptPaths(t *testing.T) {
@@ -34,13 +31,9 @@ func TestGeneratedTypeScriptPaths(t *testing.T) {
 		"src/api/client.gen.ts",
 		"src/api/client.generated.tsx",
 	} {
-		if !isGeneratedPath(path) {
-			t.Errorf("%q was not classified as generated", path)
-		}
+		assert.True(t, isGeneratedPath(path), "%q was not classified as generated", path)
 	}
 	for _, path := range []string{"src/client.ts", "src/types.d.ts", "src/component.tsx"} {
-		if isGeneratedPath(path) {
-			t.Errorf("%q was incorrectly classified as generated", path)
-		}
+		assert.False(t, isGeneratedPath(path), "%q was incorrectly classified as generated", path)
 	}
 }

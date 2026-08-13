@@ -4,18 +4,17 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestResolveModelPolicyDefaultsUseTieredModels(t *testing.T) {
 	cfg, err := LoadBytes(nil)
-	if err != nil {
-		t.Fatalf("LoadBytes() error = %v", err)
-	}
+	require.NoError(t, err, "load bytes")
 
 	policy, err := ResolveModelPolicy(cfg)
-	if err != nil {
-		t.Fatalf("ResolveModelPolicy() error = %v", err)
-	}
+	require.NoError(t, err, "resolve model policy")
 
 	assertPolicyEntry(t, policy, ProcessProbe, ModelSettings{Model: "gpt-5.6-luna", Effort: "low", Fast: true})
 	assertPolicyEntry(t, policy, ProcessSemanticRouter, ModelSettings{Model: "gpt-5.6-terra", Effort: "low", Fast: false})
@@ -117,7 +116,8 @@ func TestLoadBytesRejectsInvalidModelPolicy(t *testing.T) {
 func assertPolicyEntry(t *testing.T, policy ResolvedModelPolicy, process string, want ModelSettings) {
 	t.Helper()
 	got, ok := policy.Entry(process)
-	if !ok || got.Model != want.Model || got.Effort != want.Effort || got.Fast != want.Fast {
-		t.Fatalf("Entry(%q) = %+v, found=%v, want %+v", process, got, ok, want)
-	}
+	require.True(t, ok, "policy entry %q missing", process)
+	assert.Equal(t, want.Model, got.Model, "policy entry %q model", process)
+	assert.Equal(t, want.Effort, got.Effort, "policy entry %q effort", process)
+	assert.Equal(t, want.Fast, got.Fast, "policy entry %q fast", process)
 }

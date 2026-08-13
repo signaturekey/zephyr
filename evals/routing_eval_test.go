@@ -7,14 +7,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/signaturekey/zephyr/internal/config"
 	"github.com/signaturekey/zephyr/internal/routing"
 	"github.com/signaturekey/zephyr/internal/schema"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type routingEvalCase struct {
@@ -33,29 +35,21 @@ type routingEvalCase struct {
 
 func TestSemanticRoutingResolutionFixtures(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("routing-cases", "*.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(paths) < 3 {
-		t.Fatalf("semantic routing eval coverage is incomplete: %d cases", len(paths))
-	}
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(paths), 3, "semantic routing eval coverage is incomplete")
 	sort.Strings(paths)
 	for _, path := range paths {
 		path := path
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			fixture := loadRoutingEval(t, path)
 			cfg, err := config.Load("")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			request, err := routing.PrepareSemantic(cfg, routing.Input{
 				Mode: routing.Mode(fixture.Mode), ChangedPaths: fixture.ChangedPaths,
 				Signals: fixture.Signals, StrongSignals: fixture.StrongSignals,
 				HasPlan: fixture.HasPlan, HasChanges: fixture.HasChanges,
 			}, fixture.CaseID, strings.Repeat("a", 64), []routing.EvidenceSource{{ID: "scope", Kind: "scope", Source: "eval packet"}})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			included := make(map[string]struct{}, len(fixture.SemanticIncludedRoles))
 			for _, role := range fixture.SemanticIncludedRoles {
 				included[role] = struct{}{}
@@ -71,35 +65,23 @@ func TestSemanticRoutingResolutionFixtures(t *testing.T) {
 				})
 			}
 			result, err := routing.ResolveSemantic(request, proposal)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			assertCompleteRoutingProvenance(t, request, result)
 			selected := routingRoles(result.Selected)
-			if !slices.Equal(selected, fixture.ExpectedSelectedRoles) {
-				t.Fatalf("selected roles = %v, want %v", selected, fixture.ExpectedSelectedRoles)
+			if diff := cmp.Diff(fixture.ExpectedSelectedRoles, selected); diff != "" {
+				t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
 			}
 			excluded := routingRoles(result.Excluded)
 			for _, role := range fixture.ExpectedExcludedRoles {
-				if !slices.Contains(excluded, role) {
-					t.Fatalf("expected excluded role %q missing from %v", role, excluded)
-				}
+				assert.Contains(t, excluded, role)
 			}
 			second, err := routing.ResolveSemantic(request, proposal)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			firstJSON, err := json.Marshal(result)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			secondJSON, err := json.Marshal(second)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(firstJSON, secondJSON) {
-				t.Fatalf("same semantic response produced different routing.json:\n%s\n%s", firstJSON, secondJSON)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, firstJSON, secondJSON, "same semantic response produced different routing.json")
 		})
 	}
 }
@@ -109,38 +91,28 @@ func TestLiveSemanticRoutingClassification(t *testing.T) {
 	if harness == "" {
 		t.Skip("set ZEPHYR_ROUTING_EVAL_HARNESS=codex to run live semantic classification evals")
 	}
-	if harness != "codex" {
-		t.Fatalf("unsupported ZEPHYR_ROUTING_EVAL_HARNESS %q", harness)
-	}
+	require.Equalf(t, "codex", harness, "unsupported ZEPHYR_ROUTING_EVAL_HARNESS %q", harness)
 	dispatcher, err := filepath.Abs(filepath.Join("..", "harnesses", harness, "dispatch.sh"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	compatibility := os.Getenv("ZEPHYR_ROUTING_EVAL_COMPAT")
 	if harness == "codex" && compatibility == "" {
 		t.Skip("set ZEPHYR_ROUTING_EVAL_COMPAT to a fresh Codex compatibility descriptor")
 	}
 
 	paths, err := filepath.Glob(filepath.Join("routing-cases", "*.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sort.Strings(paths)
 	for _, path := range paths {
 		fixture := loadRoutingEval(t, path)
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			cfg, err := config.Load("")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			request, err := routing.PrepareSemantic(cfg, routing.Input{
 				Mode: routing.Mode(fixture.Mode), ChangedPaths: fixture.ChangedPaths,
 				Signals: fixture.Signals, StrongSignals: fixture.StrongSignals,
 				HasPlan: fixture.HasPlan, HasChanges: fixture.HasChanges,
 			}, fixture.CaseID, strings.Repeat("a", 64), []routing.EvidenceSource{{ID: "scope", Kind: "scope", Source: "eval scope"}})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			root := t.TempDir()
 			packetPath := filepath.Join(root, "review-packet.json")
 			requestPath := filepath.Join(root, "routing-request.json")
@@ -159,23 +131,16 @@ func TestLiveSemanticRoutingClassification(t *testing.T) {
 			}
 			args = append(args, "--output", outputPath)
 			command := exec.Command("sh", args...)
-			if output, err := command.CombinedOutput(); err != nil {
-				t.Fatalf("semantic router dispatch failed: %v\n%s", err, output)
-			}
-			output, err := os.ReadFile(outputPath)
-			if err != nil {
-				t.Fatal(err)
-			}
+			output, err := command.CombinedOutput()
+			require.NoErrorf(t, err, "semantic router dispatch failed: %s", output)
+			output, err = os.ReadFile(outputPath)
+			require.NoError(t, err)
 			proposal, err := schema.ValidateSemanticRoutingBytes(output)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			result, err := routing.ResolveSemantic(request, proposal)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if selected := routingRoles(result.Selected); !slices.Equal(selected, fixture.ExpectedSelectedRoles) {
-				t.Fatalf("live semantic roles = %v, want %v", selected, fixture.ExpectedSelectedRoles)
+			require.NoError(t, err)
+			if diff := cmp.Diff(fixture.ExpectedSelectedRoles, routingRoles(result.Selected)); diff != "" {
+				t.Fatalf("live semantic roles mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -184,34 +149,25 @@ func TestLiveSemanticRoutingClassification(t *testing.T) {
 func writeJSONFile(t *testing.T, path string, value any) {
 	t.Helper()
 	data, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	data = append(data, '\n')
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, data, 0o600))
 }
 
 func assertCompleteRoutingProvenance(t *testing.T, request routing.SemanticRequest, result routing.Result) {
 	t.Helper()
 	seen := make(map[string]struct{}, len(config.KnownRoles()))
 	for _, decision := range append(append([]routing.Decision{}, result.Selected...), result.Excluded...) {
-		if _, duplicate := seen[decision.Role]; duplicate {
-			t.Fatalf("role %q appears more than once in routing result", decision.Role)
-		}
+		_, duplicate := seen[decision.Role]
+		require.Falsef(t, duplicate, "role %q appears more than once in routing result", decision.Role)
 		seen[decision.Role] = struct{}{}
-		if decision.Source == "" || len(decision.Reasons) == 0 {
-			t.Fatalf("role %q lacks source or reasons: %#v", decision.Role, decision)
-		}
+		require.NotEmptyf(t, decision.Source, "role %q lacks source", decision.Role)
+		require.NotEmptyf(t, decision.Reasons, "role %q lacks reasons", decision.Role)
 	}
-	if len(seen) != len(config.KnownRoles()) {
-		t.Fatalf("routing accounts for %d of %d roles", len(seen), len(config.KnownRoles()))
-	}
+	assert.Len(t, seen, len(config.KnownRoles()), "routing accounts for every known role")
 	for _, decision := range request.Protected {
-		if !decision.Protected || decision.Source == "" {
-			t.Fatalf("protected decision lacks provenance: %#v", decision)
-		}
+		assert.True(t, decision.Protected, "protected decision lacks protection")
+		assert.NotEmpty(t, decision.Source, "protected decision lacks provenance")
 	}
 	for _, candidate := range request.Candidates {
 		var resolved *routing.Decision
@@ -225,35 +181,27 @@ func assertCompleteRoutingProvenance(t *testing.T, request routing.SemanticReque
 				resolved = &result.Excluded[i]
 			}
 		}
-		if resolved == nil || resolved.Source != "semantic-llm" {
-			t.Fatalf("semantic candidate %q lacks semantic provenance: %#v", candidate.Role, resolved)
-		}
+		require.NotNilf(t, resolved, "semantic candidate %q lacks semantic provenance", candidate.Role)
+		require.Equal(t, "semantic-llm", resolved.Source)
 		semanticReason := resolved.Reasons[len(resolved.Reasons)-1]
-		if len(semanticReason.EvidenceRefs) == 0 || semanticReason.Confidence == nil {
-			t.Fatalf("semantic candidate %q lacks evidence provenance: %#v", candidate.Role, semanticReason)
-		}
+		assert.NotEmpty(t, semanticReason.EvidenceRefs, "semantic candidate %q lacks evidence provenance", candidate.Role)
+		assert.NotNil(t, semanticReason.Confidence, "semantic candidate %q lacks confidence", candidate.Role)
 	}
 }
 
 func loadRoutingEval(t *testing.T, path string) routingEvalCase {
 	t.Helper()
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var result routingEvalCase
-	if err := decoder.Decode(&result); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, decoder.Decode(&result))
 	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		t.Fatalf("routing eval contains trailing JSON: %v", err)
-	}
-	if result.CaseID == "" || result.Mode == "" || strings.TrimSpace(result.ScopeText) == "" {
-		t.Fatal("routing eval identity is incomplete")
-	}
+	require.ErrorIs(t, decoder.Decode(&trailing), io.EOF, "routing eval contains trailing JSON")
+	require.NotEmpty(t, result.CaseID, "routing eval identity is incomplete")
+	require.NotEmpty(t, result.Mode, "routing eval identity is incomplete")
+	require.NotEmpty(t, strings.TrimSpace(result.ScopeText), "routing eval identity is incomplete")
 	return result
 }
 

@@ -4,16 +4,17 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadDefaults(t *testing.T) {
 	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load defaults: %v", err)
-	}
+	require.NoError(t, err, "load defaults")
 
 	if cfg.Version != CurrentVersion || cfg.Profile != ProfileStandard || cfg.Language != "auto" {
 		t.Fatalf("unexpected defaults: version=%d profile=%q language=%q", cfg.Version, cfg.Profile, cfg.Language)
@@ -25,7 +26,7 @@ func TestLoadDefaults(t *testing.T) {
 	for _, role := range KnownRoles() {
 		roleConfig, ok := cfg.Roles[role]
 		if !ok || !roleConfig.Enabled {
-			t.Errorf("default role %q is not enabled", role)
+			assert.True(t, ok && roleConfig.Enabled, "default role %q is not enabled", role)
 		}
 	}
 	if roleConfig, ok := cfg.Roles["python-expert"]; !ok || !roleConfig.Enabled {
@@ -93,35 +94,23 @@ redaction:
 func TestLoadSupportsFileAndRepositoryDirectory(t *testing.T) {
 	repository := t.TempDir()
 	configDir := filepath.Join(repository, ".zephyr")
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(configDir, 0o700))
 	configPath := filepath.Join(configDir, "config.yaml")
-	if err := os.WriteFile(configPath, []byte("version: 1\nprofile: thorough\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(configPath, []byte("version: 1\nprofile: thorough\n"), 0o600))
 
 	fromDir, err := Load(repository)
-	if err != nil {
-		t.Fatalf("Load repository directory: %v", err)
-	}
+	require.NoError(t, err, "load repository directory")
 	fromFile, err := Load(configPath)
-	if err != nil {
-		t.Fatalf("Load file: %v", err)
-	}
-	if !reflect.DeepEqual(fromDir, fromFile) {
-		t.Fatalf("directory and file loads differ:\nfrom dir: %#v\nfrom file: %#v", fromDir, fromFile)
+	require.NoError(t, err, "load file")
+	if diff := cmp.Diff(fromFile, fromDir, cmp.AllowUnexported(ModelSettings{})); diff != "" {
+		t.Fatalf("loaded config mismatch (-want +got):\n%s", diff)
 	}
 }
 
 func TestEmbeddedDefaultsDoNotDependOnWorkingDirectory(t *testing.T) {
 	original, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(t.TempDir()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(t.TempDir()))
 	t.Cleanup(func() { _ = os.Chdir(original) })
 
 	if _, err := Load(""); err != nil {

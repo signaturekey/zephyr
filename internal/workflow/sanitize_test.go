@@ -25,9 +25,15 @@ func TestSanitizeAgentOutputs(t *testing.T) {
 	}, redaction.DefaultPolicy(nil))
 	combined := candidates.Findings[0].Title + *candidates.Findings[0].Evidence.Code +
 		*candidates.Findings[0].Evidence.RequirementSource + candidates.Findings[0].Impact + verdicts.Verdicts[0].Reason
-	for _, secret := range []string{"hunter2", "live-token", "top-secret"} {
-		if strings.Contains(combined, secret) {
-			t.Fatalf("agent output leaked %q: %s", secret, combined)
+	for _, test := range []struct {
+		name, secret string
+	}{
+		{name: "password", secret: "hunter2"},
+		{name: "token", secret: "live-token"},
+		{name: "client secret", secret: "top-secret"},
+	} {
+		if strings.Contains(combined, test.secret) {
+			t.Errorf("agent output leaked %s", test.name)
 		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/signaturekey/zephyr/internal/run"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCollectMarksSubmoduleChanges(t *testing.T) {
@@ -31,9 +32,7 @@ func TestCollectMarksSubmoduleChanges(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		marker = filepath.Join(t.TempDir(), "submodule-filter-ran")
 		filter := filepath.Join(t.TempDir(), "submodule-clean-filter")
-		if err := os.WriteFile(filter, []byte("#!/bin/sh\ntouch \""+marker+"\"\ncat\n"), 0o700); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.WriteFile(filter, []byte("#!/bin/sh\ntouch \""+marker+"\"\ncat\n"), 0o700))
 		checkedOutSubmodule.git(t, "config", "filter.zephyraudit.clean", filter)
 		checkedOutSubmodule.write(t, ".gitattributes", []byte("*.txt filter=zephyraudit\n"))
 		checkedOutSubmodule.write(t, "value.txt", []byte("locally dirty\n"))
@@ -43,9 +42,7 @@ func TestCollectMarksSubmoduleChanges(t *testing.T) {
 		Repository: parent.path,
 		Source:     run.SourceWorkingTree,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	change := findChange(t, snapshot, "modules/sample")
 	if !change.Submodule || change.OldMode != "160000" || change.NewMode != "160000" {
 		t.Fatalf("submodule metadata = %#v", change)

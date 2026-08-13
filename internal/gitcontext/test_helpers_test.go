@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type testRepository struct {
@@ -21,9 +23,7 @@ func newTestRepository(t *testing.T, name string) testRepository {
 	}
 	base := t.TempDir()
 	home := filepath.Join(base, "home")
-	if err := os.Mkdir(home, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(home, 0o700))
 	repository := testRepository{
 		path: filepath.Join(base, name),
 		env: append(os.Environ(),
@@ -35,9 +35,7 @@ func newTestRepository(t *testing.T, name string) testRepository {
 			"TZ=UTC",
 		),
 	}
-	if err := os.Mkdir(repository.path, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(repository.path, 0o700))
 	repository.git(t, "init", "-q")
 	repository.git(t, "config", "user.name", "Zephyr Test")
 	repository.git(t, "config", "user.email", "zephyr@example.invalid")
@@ -63,25 +61,18 @@ func (repository testRepository) git(t *testing.T, args ...string) string {
 func (repository testRepository) write(t *testing.T, relative string, content []byte) {
 	t.Helper()
 	path := filepath.Join(repository.path, filepath.FromSlash(relative))
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, content, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	require.NoError(t, os.WriteFile(path, content, 0o600))
 }
 
 func (repository testRepository) append(t *testing.T, relative, content string) {
 	t.Helper()
 	path := filepath.Join(repository.path, filepath.FromSlash(relative))
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer file.Close()
-	if _, err := file.WriteString(content); err != nil {
-		t.Fatal(err)
-	}
+	_, err = file.WriteString(content)
+	require.NoError(t, err)
 }
 
 func (repository testRepository) commitAll(t *testing.T, message string) string {
@@ -98,9 +89,7 @@ func (repository testRepository) collector(t *testing.T) *Collector {
 		Timeout: 5 * time.Second,
 		Env:     repository.env,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return collector
 }
 

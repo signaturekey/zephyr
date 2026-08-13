@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/signaturekey/zephyr/internal/run"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExplicitUntrackedContentIsFilteredAndBounded(t *testing.T) {
@@ -20,9 +21,7 @@ func TestExplicitUntrackedContentIsFilteredAndBounded(t *testing.T) {
 	repository.write(t, "config.txt", []byte("password=DO_NOT_LEAK\n"))
 	repository.write(t, "generated/new.pb.go", []byte("GENERATED_SENTINEL\n"))
 	repository.write(t, "large.txt", []byte("0123456789ABCDEFGHIJ"))
-	if err := os.Symlink(filepath.Join(repository.path, "normal.go"), filepath.Join(repository.path, "link.go")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Symlink(filepath.Join(repository.path, "normal.go"), filepath.Join(repository.path, "link.go")))
 
 	snapshot, err := repository.collector(t).Collect(context.Background(), Options{
 		Repository:              repository.path,
@@ -30,15 +29,18 @@ func TestExplicitUntrackedContentIsFilteredAndBounded(t *testing.T) {
 		IncludeUntrackedContent: true,
 		MaxUntrackedBytes:       10,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if !strings.Contains(snapshot.Patches.Full, "+hello") {
 		t.Fatalf("normal untracked content is missing:\n%s", snapshot.Patches.Full)
 	}
-	for _, secret := range []string{"DO_NOT_LEAK", "GENERATED_SENTINEL"} {
-		if strings.Contains(snapshot.Patches.Full, secret) {
-			t.Fatalf("filtered content %q leaked into patch:\n%s", secret, snapshot.Patches.Full)
+	for _, test := range []struct {
+		name, content string
+	}{
+		{name: "secret-like content", content: "DO_NOT_LEAK"},
+		{name: "generated content", content: "GENERATED_SENTINEL"},
+	} {
+		if strings.Contains(snapshot.Patches.Full, test.content) {
+			t.Errorf("filtered %s leaked into patch", test.name)
 		}
 	}
 	if normal := findUntracked(t, snapshot, "normal.go"); !normal.ContentIncluded || normal.Truncated {

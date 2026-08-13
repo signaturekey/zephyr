@@ -1,6 +1,11 @@
 package run
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestResolveMode(t *testing.T) {
 	t.Parallel()
@@ -23,12 +28,12 @@ func TestResolveMode(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := ResolveMode(test.mode, test.hasPlan, test.hasChanges)
-			if (err != nil) != test.wantError {
-				t.Fatalf("ResolveMode() error = %v, wantError %v", err, test.wantError)
+			if test.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
 			}
-			if got != test.want {
-				t.Fatalf("ResolveMode() = %q, want %q", got, test.want)
-			}
+			assert.Equal(t, test.want, got)
 		})
 	}
 }
@@ -36,16 +41,9 @@ func TestResolveMode(t *testing.T) {
 func TestManifestSetStage(t *testing.T) {
 	t.Parallel()
 	manifest := Manifest{Stages: defaultStages(testTime)}
-	if err := manifest.SetStage("collect", StageRunning, testTime, ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := manifest.SetStage("collect", StageComplete, testTime.Add(1), ""); err != nil {
-		t.Fatal(err)
-	}
-	if manifest.Stages[1].StartedAt == nil || manifest.Stages[1].FinishedAt == nil {
-		t.Fatal("collect stage timestamps were not recorded")
-	}
-	if err := manifest.SetStage("unknown", StageComplete, testTime, ""); err == nil {
-		t.Fatal("SetStage() accepted an unknown stage")
-	}
+	require.NoError(t, manifest.SetStage("collect", StageRunning, testTime, ""))
+	require.NoError(t, manifest.SetStage("collect", StageComplete, testTime.Add(1), ""))
+	assert.NotNil(t, manifest.Stages[1].StartedAt)
+	assert.NotNil(t, manifest.Stages[1].FinishedAt)
+	assert.Error(t, manifest.SetStage("unknown", StageComplete, testTime, ""))
 }
