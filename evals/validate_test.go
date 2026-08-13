@@ -9,51 +9,35 @@ import (
 	"testing"
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestForwardEvaluationRecords(t *testing.T) {
 	schemaData, err := os.ReadFile("forward-eval.schema.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	document, err := jsonschema.UnmarshalJSON(bytes.NewReader(schemaData))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	compiler := jsonschema.NewCompiler()
 	compiler.DefaultDraft(jsonschema.Draft2020)
 	compiler.AssertFormat()
-	if err := compiler.AddResource("forward-eval.schema.json", document); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, compiler.AddResource("forward-eval.schema.json", document))
 	compiled, err := compiler.Compile("forward-eval.schema.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	paths, err := filepath.Glob(filepath.Join("testdata", "*.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	casePaths, err := filepath.Glob(filepath.Join("cases", "*.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	paths = append(paths, casePaths...)
 	sort.Strings(paths)
 	for _, path := range paths {
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			data, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
-			if err != nil {
-				t.Fatalf("decode JSON: %v", err)
-			}
-			if err := compiled.Validate(instance); err != nil {
-				t.Fatalf("schema validation: %v", err)
-			}
+			require.NoError(t, err, "decode JSON")
+			require.NoError(t, compiled.Validate(instance), "schema validation")
 			validateReferences(t, data)
 		})
 	}
@@ -86,9 +70,7 @@ type evalRecord struct {
 func validateReferences(t *testing.T, data []byte) {
 	t.Helper()
 	var record evalRecord
-	if err := json.Unmarshal(data, &record); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(data, &record))
 	humanIDs := make([]string, 0, len(record.Baseline.HumanFindings))
 	for _, finding := range record.Baseline.HumanFindings {
 		humanIDs = append(humanIDs, finding.ID)
@@ -117,21 +99,16 @@ func validateReferences(t *testing.T, data []byte) {
 		requireID(t, zephyr, item.ZephyrID, "Zephyr-only")
 		classifyOnce(t, classifiedZephyr, item.ZephyrID, "Zephyr")
 	}
-	if len(classifiedHuman) != len(human) {
-		t.Errorf("comparison classifies %d of %d human findings", len(classifiedHuman), len(human))
-	}
-	if len(classifiedZephyr) != len(zephyr) {
-		t.Errorf("comparison classifies %d of %d Zephyr findings", len(classifiedZephyr), len(zephyr))
-	}
+	assert.Len(t, classifiedHuman, len(human), "comparison classifies every human finding")
+	assert.Len(t, classifiedZephyr, len(zephyr), "comparison classifies every Zephyr finding")
 }
 
 func makeIDSet(t *testing.T, label string, values []string) map[string]struct{} {
 	t.Helper()
 	result := make(map[string]struct{}, len(values))
 	for _, id := range values {
-		if _, exists := result[id]; exists {
-			t.Fatalf("duplicate %s finding ID %q", label, id)
-		}
+		_, exists := result[id]
+		require.Falsef(t, exists, "duplicate %s finding ID %q", label, id)
 		result[id] = struct{}{}
 	}
 	return result
@@ -139,15 +116,13 @@ func makeIDSet(t *testing.T, label string, values []string) map[string]struct{} 
 
 func requireID(t *testing.T, known map[string]struct{}, id, label string) {
 	t.Helper()
-	if _, exists := known[id]; !exists {
-		t.Errorf("%s reference %q does not exist", label, id)
-	}
+	_, exists := known[id]
+	assert.Truef(t, exists, "%s reference %q does not exist", label, id)
 }
 
 func classifyOnce(t *testing.T, classified map[string]struct{}, id, label string) {
 	t.Helper()
-	if _, exists := classified[id]; exists {
-		t.Errorf("%s finding %q is classified more than once", label, id)
-	}
+	_, exists := classified[id]
+	assert.Falsef(t, exists, "%s finding %q is classified more than once", label, id)
 	classified[id] = struct{}{}
 }

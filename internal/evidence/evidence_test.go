@@ -6,13 +6,13 @@ import (
 	"github.com/signaturekey/zephyr/internal/config"
 	"github.com/signaturekey/zephyr/internal/contextpack"
 	"github.com/signaturekey/zephyr/internal/schema"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPrecheckAcceptsSupportedCodeFinding(t *testing.T) {
 	cfg, err := config.LoadBytes(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	code := "func handler() {}"
 	finding := candidate("code-reviewer-001", "code-reviewer", schema.SeverityP1)
 	finding.Location = schema.FindingLocation{File: "handler.go", LineStart: 3, LineEnd: 3}
@@ -26,9 +26,8 @@ func TestPrecheckAcceptsSupportedCodeFinding(t *testing.T) {
 		ChangedFiles: []string{"handler.go"},
 		Diff:         contextpack.Diff{Full: "diff --git a/handler.go b/handler.go\n--- a/handler.go\n+++ b/handler.go\n@@ -1,3 +1,3 @@\n package demo\n \n func handler() {}\n"},
 	}, cfg)
-	if len(report.Accepted) != 1 || len(report.Rejected) != 0 {
-		t.Fatalf("unexpected precheck: %#v", report)
-	}
+	assert.Len(t, report.Accepted, 1)
+	assert.Empty(t, report.Rejected)
 }
 
 func TestPrecheckRejectsLineAbsentFromImmutableDiff(t *testing.T) {

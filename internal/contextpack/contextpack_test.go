@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/signaturekey/zephyr/internal/redaction"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBuildCollectsAndTruncatesContext(t *testing.T) {
@@ -40,18 +42,14 @@ func TestBuildCollectsAndTruncatesContext(t *testing.T) {
 		Redaction:        redaction.DefaultPolicy(nil),
 		Instructions:     instructions,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if !result.Packet.Diff.Truncated || len(result.Truncations) != 1 {
 		t.Fatalf("expected one diff truncation, got %#v", result.Truncations)
 	}
 	if result.Packet.Plan == nil || result.Packet.Plan.Content != "implementation plan" {
 		t.Fatalf("unexpected plan: %#v", result.Packet.Plan)
 	}
-	if len(result.Packet.ProjectInstructions) != 2 {
-		t.Fatalf("instructions = %d, want 2", len(result.Packet.ProjectInstructions))
-	}
+	assert.Len(t, result.Packet.ProjectInstructions, 2)
 	if got := result.Packet.Technologies; len(got) != 1 || got[0] != "go" {
 		t.Fatalf("technologies = %v", got)
 	}
@@ -62,12 +60,10 @@ func TestBuildCollectsAndTruncatesContext(t *testing.T) {
 		t.Fatalf("coverage limits = %v", result.Packet.CoverageLimits)
 	}
 	packetBytes, err := json.Marshal(result.Packet)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, privatePath := range []string{repo, runDir} {
 		if strings.Contains(string(packetBytes), privatePath) {
-			t.Fatalf("reviewer packet leaked absolute path %q: %s", privatePath, packetBytes)
+			t.Errorf("reviewer packet leaked absolute path %q", filepath.Base(privatePath))
 		}
 	}
 	if result.Packet.Repository.Root != "reviewed-repository" {
@@ -100,9 +96,7 @@ func TestPlanContentProducesBoundedSemanticRoutingSignals(t *testing.T) {
 		RunDir: runDir, RunID: "run", Mode: "plan", Source: "plan-only", PlanPath: plan,
 		Redaction: redaction.DefaultPolicy(nil),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, expected := range []string{"architecture", "contract", "security", "sql", "tests"} {
 		if !containsString(result.Packet.RoutingSignals, expected) {
 			t.Fatalf("signal %q missing from %v", expected, result.Packet.RoutingSignals)
@@ -223,7 +217,7 @@ func TestBuildRedactsDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(result.Packet.Diff.Full, "hunter2") {
-		t.Fatalf("secret leaked into packet: %s", result.Packet.Diff.Full)
+		t.Error("secret leaked into packet diff")
 	}
 }
 
@@ -240,7 +234,7 @@ func TestBuildRedactsPrivateKeyWhenDiffTruncatesBeforeEndMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(result.Packet.Diff.Full, "PARTIAL_PRIVATE_KEY_SENTINEL") || strings.Contains(result.Packet.Diff.Full, "BEGIN PRIVATE KEY") {
-		t.Fatalf("truncated private key leaked into packet: %q", result.Packet.Diff.Full)
+		t.Error("truncated private key leaked into packet")
 	}
 }
 
@@ -300,9 +294,9 @@ func TestSaveBusinessSnapshotRedactsURLCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, secret := range []string{"password", "live-token"} {
+	for secretID, secret := range []string{"password", "live-token"} {
 		if strings.Contains(snapshot.URL, secret) {
-			t.Fatalf("URL secret %q leaked in %q", secret, snapshot.URL)
+			t.Errorf("URL secret %d leaked", secretID)
 		}
 	}
 }

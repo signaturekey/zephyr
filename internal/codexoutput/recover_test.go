@@ -3,6 +3,9 @@ package codexoutput
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRecoverStructuredOutput(t *testing.T) {
@@ -16,12 +19,8 @@ func TestRecoverStructuredOutput(t *testing.T) {
 	}, "\n") + "\n"
 
 	got, err := Recover([]byte(events), KindReviewer)
-	if err != nil {
-		t.Fatalf("Recover() error = %v", err)
-	}
-	if string(got) != want {
-		t.Fatalf("Recover() = %q, want %q", got, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, want, string(got))
 }
 
 func TestRecoverStructuredOutputKinds(t *testing.T) {
@@ -38,12 +37,8 @@ func TestRecoverStructuredOutputKinds(t *testing.T) {
 			events := `{"type":"item.completed","item":{"type":"agent_message","text":` + quoteJSON(test.message) + `}}` + "\n" +
 				`{"type":"turn.completed"}` + "\n"
 			got, err := Recover([]byte(events), test.kind)
-			if err != nil {
-				t.Fatalf("Recover() error = %v", err)
-			}
-			if string(got) != test.message {
-				t.Fatalf("Recover() = %q, want %q", got, test.message)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, test.message, string(got))
 		})
 	}
 }
@@ -102,9 +97,8 @@ func TestRecoverStructuredOutputFailsClosed(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := Recover([]byte(strings.Join(test.events, "\n")+"\n"), KindReviewer)
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Recover() error = %v, want containing %q", err, test.want)
-			}
+			require.Error(t, err)
+			assert.ErrorContains(t, err, test.want)
 		})
 	}
 }

@@ -4,26 +4,23 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTraceRoundTrip(t *testing.T) {
 	start := time.Date(2026, 8, 2, 10, 0, 0, 0, time.UTC)
 	value := Trace{Version: Version, RunID: "run-1", Events: []Event{}}
 	index := value.Start("collect", start, map[string]string{"source": "working-tree"})
-	if err := value.Finish(index, StatusCompleted, start.Add(1500*time.Millisecond), ""); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, value.Finish(index, StatusCompleted, start.Add(1500*time.Millisecond), ""))
 	path := filepath.Join(t.TempDir(), "trace.json")
-	if err := Save(path, value); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, Save(path, value))
 	got, err := Load(path, "run-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got.Events) != 1 || got.Events[0].DurationMS != 1500 || got.Events[0].Status != StatusCompleted {
-		t.Fatalf("unexpected trace: %#v", got)
-	}
+	require.NoError(t, err)
+	require.Len(t, got.Events, 1)
+	assert.Equal(t, int64(1500), got.Events[0].DurationMS)
+	assert.Equal(t, StatusCompleted, got.Events[0].Status)
 }
 
 func TestFinishRejectsInvalidState(t *testing.T) {

@@ -7,6 +7,8 @@ import (
 
 	"github.com/signaturekey/zephyr/internal/config"
 	"github.com/signaturekey/zephyr/internal/schema"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSemanticRoutingCanRemoveWeakTextMatches(t *testing.T) {
@@ -14,21 +16,15 @@ func TestSemanticRoutingCanRemoveWeakTextMatches(t *testing.T) {
 	request, err := PrepareSemantic(cfg, Input{
 		Mode: ModePlan, HasPlan: true, Signals: []string{"architecture", "contract", "frontend", "skill-authoring", "sql"},
 	}, "run-1", strings.Repeat("a", 64), []EvidenceSource{{ID: "scope", Kind: "scope", Source: "packet"}, {ID: "plan", Kind: "plan", Source: "spec.md"}, {ID: "business-001", Kind: "business-context", Source: "bitbucket:master"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !decisionProtected(request.Protected, config.RoleArchitectReviewer) {
-		t.Fatalf("mandatory architect is not protected: %#v", request.Protected)
-	}
+	require.NoError(t, err)
+	assert.True(t, decisionProtected(request.Protected, config.RoleArchitectReviewer), "mandatory architect is not protected")
 
 	proposal := semanticProposal(request, map[string]bool{
 		config.RoleContractReviewer:     true,
 		config.RoleSkillAuthoringExpert: true,
 	})
 	result, err := ResolveSemantic(request, proposal)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if decisionPresent(result.Selected, config.RoleFrontendExpert) || decisionPresent(result.Selected, config.RoleSQLExpert) {
 		t.Fatalf("weak false positives remained selected: %#v", result.Selected)
 	}
@@ -45,9 +41,7 @@ func TestSemanticRoutingCannotRemovePathProtectedRole(t *testing.T) {
 		ChangedPaths: []string{"src/view.tsx", "migrations/001.sql"}, Signals: []string{"frontend", "typescript", "sql"}, StrongSignals: []string{"frontend", "typescript", "sql"},
 		ForceInclude: []string{config.RoleQAExpert},
 	}, "run-2", strings.Repeat("b", 64), []EvidenceSource{{ID: "scope", Kind: "scope", Source: "packet"}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, role := range []string{config.RoleCodeReviewer, config.RoleSQLExpert, config.RoleTypeScriptExpert, config.RoleFrontendExpert, config.RoleQAExpert} {
 		if !decisionProtected(request.Protected, role) {
 			t.Fatalf("path role %q is not protected: %#v", role, request.Protected)

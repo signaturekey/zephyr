@@ -9,6 +9,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSystemRunnerRejectsWriteCommandsAndUnsafeDiffOptions(t *testing.T) {
@@ -23,9 +26,8 @@ func TestSystemRunnerRejectsWriteCommandsAndUnsafeDiffOptions(t *testing.T) {
 		{"diff", "--patch"},
 		{"symbolic-ref", "HEAD", "refs/heads/forbidden"},
 	} {
-		if _, err := runner.Run(context.Background(), t.TempDir(), args...); !errors.Is(err, ErrCommandNotAllowed) {
-			t.Errorf("Run(%v) error = %v, want ErrCommandNotAllowed", args, err)
-		}
+		_, err := runner.Run(context.Background(), t.TempDir(), args...)
+		assert.ErrorIs(t, err, ErrCommandNotAllowed, "run (%v)", args)
 	}
 }
 
@@ -52,9 +54,7 @@ func TestCommandComparesWorkingTree(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if got := commandComparesWorkingTree(test.args); got != test.want {
-				t.Fatalf("commandComparesWorkingTree(%v) = %v, want %v", test.args, got, test.want)
-			}
+			assert.Equal(t, test.want, commandComparesWorkingTree(test.args), "commandComparesWorkingTree(%v)", test.args)
 		})
 	}
 }
@@ -66,9 +66,7 @@ func TestSystemRunnerScrubsHostileGitEnvironment(t *testing.T) {
 	directory := t.TempDir()
 	script := filepath.Join(directory, "env-git")
 	content := "#!/bin/sh\nenv | LC_ALL=C sort\n"
-	if err := os.WriteFile(script, []byte(content), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(script, []byte(content), 0o700))
 	runner := &SystemRunner{Path: script, Timeout: 5 * time.Second, Env: []string{
 		"PATH=" + os.Getenv("PATH"),
 		"GIT_DIR=/tmp/redirected",
@@ -80,9 +78,7 @@ func TestSystemRunnerScrubsHostileGitEnvironment(t *testing.T) {
 		"GIT_LITERAL_PATHSPECS=1",
 	}}
 	result, err := runner.Run(context.Background(), directory, "status", "--porcelain=v2")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	environment := string(result.Stdout)
 	for _, forbidden := range []string{"GIT_DIR=", "GIT_WORK_TREE=", "GIT_CONFIG_COUNT=", "GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_", "GIT_TRACE=", "GIT_LITERAL_PATHSPECS="} {
 		if strings.Contains(environment, forbidden) {
@@ -107,9 +103,7 @@ func TestSystemRunnerRejectsCachedLookingOptionValueBeforeFilterExecution(t *tes
 
 	marker := filepath.Join(t.TempDir(), "filter-ran")
 	filter := filepath.Join(t.TempDir(), "clean-filter")
-	if err := os.WriteFile(filter, []byte("#!/bin/sh\ntouch \""+marker+"\"\ncat\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filter, []byte("#!/bin/sh\ntouch \""+marker+"\"\ncat\n"), 0o700))
 	repository.git(t, "config", "filter.zephyraudit.clean", filter)
 	repository.write(t, "base.txt", []byte("changed\n"))
 
@@ -119,9 +113,7 @@ func TestSystemRunnerRejectsCachedLookingOptionValueBeforeFilterExecution(t *tes
 		repository.path,
 		"diff", "--no-ext-diff", "--no-textconv", "-S", "--cached", "--",
 	)
-	if !errors.Is(err, ErrUnsafeGitConfig) {
-		t.Fatalf("runner error = %v, want ErrUnsafeGitConfig", err)
-	}
+	require.ErrorIs(t, err, ErrUnsafeGitConfig)
 	if _, statErr := os.Stat(marker); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("external clean filter executed; marker stat error = %v", statErr)
 	}
@@ -133,14 +125,10 @@ func TestSystemRunnerBoundsGitOutput(t *testing.T) {
 	}
 	directory := t.TempDir()
 	script := filepath.Join(directory, "large-git")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '1234567890'\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nprintf '1234567890'\n"), 0o700))
 	runner := &SystemRunner{Path: script, Timeout: 5 * time.Second, MaxOutputBytes: 4}
 	result, err := runner.Run(context.Background(), directory, "status", "--porcelain=v2")
-	if !errors.Is(err, ErrGitOutputTooLarge) {
-		t.Fatalf("output error = %v, want ErrGitOutputTooLarge", err)
-	}
+	require.ErrorIs(t, err, ErrGitOutputTooLarge)
 	if string(result.Stdout) != "1234" {
 		t.Fatalf("bounded stdout = %q", result.Stdout)
 	}
@@ -153,13 +141,9 @@ func TestSystemRunnerReturnsTypedCommandFailure(t *testing.T) {
 	repository.commitAll(t, "base")
 	runner := &SystemRunner{Path: "git", Timeout: 5 * time.Second, Env: repository.env}
 	result, err := runner.Run(context.Background(), repository.path, "rev-parse", "--verify", "missing-ref")
-	if err == nil {
-		t.Fatal("Run() unexpectedly succeeded")
-	}
+	require.Error(t, err, "run unexpectedly succeeded")
 	var commandErr *CommandError
-	if !errors.As(err, &commandErr) {
-		t.Fatalf("Run() error = %T %v, want *CommandError", err, err)
-	}
+	require.ErrorAs(t, err, &commandErr)
 	if result.ExitCode == 0 || commandErr.Result.ExitCode != result.ExitCode || len(result.Stderr) == 0 {
 		t.Fatalf("command result did not preserve failure metadata: %#v", result)
 	}
@@ -172,19 +156,14 @@ func TestSystemRunnerTimeoutAndCancellation(t *testing.T) {
 	}
 	directory := t.TempDir()
 	script := filepath.Join(directory, "slow-git")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\nsleep 2\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nsleep 2\n"), 0o700))
 	runner := &SystemRunner{Path: script, Timeout: 20 * time.Millisecond}
 	_, err := runner.Run(context.Background(), directory, "status", "--porcelain=v2")
-	if !errors.Is(err, ErrGitTimeout) || !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("timeout error = %v, want ErrGitTimeout and DeadlineExceeded", err)
-	}
+	require.ErrorIs(t, err, ErrGitTimeout)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err = runner.Run(ctx, directory, "status", "--porcelain=v2")
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancellation error = %v, want context.Canceled", err)
-	}
+	require.ErrorIs(t, err, context.Canceled)
 }

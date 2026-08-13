@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/signaturekey/zephyr/internal/run"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheckStaleDetectsWorkingTreeAndHEADChanges(t *testing.T) {
@@ -17,31 +18,23 @@ func TestCheckStaleDetectsWorkingTreeAndHEADChanges(t *testing.T) {
 		Repository: repository.path,
 		Source:     run.SourceWorkingTree,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	unchanged, err := collector.CheckStale(context.Background(), original)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if unchanged.Stale {
 		t.Fatalf("unchanged snapshot reported stale: %#v", unchanged)
 	}
 
 	repository.append(t, "file.txt", "second change\n")
 	workingTreeChanged, err := collector.CheckStale(context.Background(), original)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if !workingTreeChanged.Stale || !workingTreeChanged.WorkingTreeChanged || workingTreeChanged.HeadChanged {
 		t.Fatalf("working-tree drift = %#v", workingTreeChanged)
 	}
 
 	repository.commitAll(t, "advance head")
 	headChanged, err := collector.CheckStale(context.Background(), original)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if !headChanged.Stale || !headChanged.HeadChanged || !headChanged.BaseChanged {
 		t.Fatalf("HEAD drift = %#v", headChanged)
 	}
@@ -59,9 +52,7 @@ func TestCheckStaleForStagedIgnoresUnstagedChangesButDetectsIndexChanges(t *test
 		Repository: repository.path,
 		Source:     run.SourceStaged,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if original.WorkingTreeFingerprint != "" {
 		t.Fatalf("staged snapshot captured a working-tree fingerprint: %q", original.WorkingTreeFingerprint)
 	}
@@ -69,18 +60,14 @@ func TestCheckStaleForStagedIgnoresUnstagedChangesButDetectsIndexChanges(t *test
 	repository.append(t, "other.txt", "unstaged change\n")
 	repository.write(t, "untracked.txt", []byte("untracked change\n"))
 	unstagedOnly, err := collector.CheckStale(context.Background(), original)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if unstagedOnly.Stale || unstagedOnly.WorkingTreeChanged || unstagedOnly.SourceChanged {
 		t.Fatalf("staged snapshot reacted to out-of-scope changes: %#v", unstagedOnly)
 	}
 
 	repository.git(t, "add", "--", "other.txt")
 	indexChanged, err := collector.CheckStale(context.Background(), original)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if !indexChanged.Stale || !indexChanged.SourceChanged || indexChanged.WorkingTreeChanged || indexChanged.HeadChanged {
 		t.Fatalf("staged index drift = %#v", indexChanged)
 	}
@@ -98,9 +85,7 @@ func TestCheckStaleForCommitRangeIgnoresWorkingTreeChanges(t *testing.T) {
 		Source:      run.SourceCommitRange,
 		CommitRange: from + ".." + to,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if original.WorkingTreeFingerprint != "" {
 		t.Fatalf("commit-range snapshot captured a working-tree fingerprint: %q", original.WorkingTreeFingerprint)
 	}
@@ -108,9 +93,7 @@ func TestCheckStaleForCommitRangeIgnoresWorkingTreeChanges(t *testing.T) {
 	repository.append(t, "base.txt", "dirty change\n")
 	repository.write(t, "untracked.txt", []byte("untracked change\n"))
 	current, err := collector.CheckStale(context.Background(), original)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if current.Stale || current.WorkingTreeChanged || current.SourceChanged {
 		t.Fatalf("commit-range snapshot reacted to out-of-scope changes: %#v", current)
 	}

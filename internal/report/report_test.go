@@ -7,6 +7,8 @@ import (
 
 	"github.com/signaturekey/zephyr/internal/evidence"
 	"github.com/signaturekey/zephyr/internal/schema"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAggregateAppliesVerdictsAndExplicitDuplicates(t *testing.T) {
@@ -26,15 +28,11 @@ func TestAggregateAppliesVerdictsAndExplicitDuplicates(t *testing.T) {
 		RejectedPath: "rejected-findings.json",
 	}
 	review, rejected, err := Aggregate(input)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if len(review.Findings) != 1 || len(review.Findings[0].SourceRoles) != 2 || len(review.Findings[0].DuplicateIDs) != 1 {
 		t.Fatalf("unexpected findings: %#v", review.Findings)
 	}
-	if len(rejected.Rejected) != 0 {
-		t.Fatalf("unexpected rejected candidates: %#v", rejected)
-	}
+	assert.Empty(t, rejected.Rejected)
 }
 
 func TestAggregateKeepsPrecheckAndGateRejections(t *testing.T) {

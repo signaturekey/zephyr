@@ -7,6 +7,8 @@ import (
 	"github.com/signaturekey/zephyr/internal/config"
 	"github.com/signaturekey/zephyr/internal/contextpack"
 	"github.com/signaturekey/zephyr/internal/schema"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReviewerScopeDefinitions(t *testing.T) {
@@ -150,15 +152,11 @@ func TestReviewerScopeDefinitions(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.role, func(t *testing.T) {
 			scope, ok := reviewerScopeForRole(test.role)
-			if !ok {
-				t.Fatal("role scope is missing")
-			}
+			require.True(t, ok, "role scope is missing")
 			if got, want := joinCategories(scope.categories), joinCategories(test.categories); got != want {
 				t.Fatalf("categories = %q, want %q", got, want)
 			}
-			if scope.locations != test.locations {
-				t.Fatalf("locations = %d, want %d", scope.locations, test.locations)
-			}
+			assert.Equal(t, test.locations, scope.locations)
 		})
 	}
 
@@ -169,9 +167,7 @@ func TestReviewerScopeDefinitions(t *testing.T) {
 
 func TestPrecheckRejectsCategoryOutsideReviewerScope(t *testing.T) {
 	cfg, err := config.LoadBytes(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	finding := candidate("code-reviewer-001", config.RoleCodeReviewer, schema.SeverityP2)
 	finding.Category = string(CategoryMigrationSafety)
 	finding.Location = schema.FindingLocation{File: "handler.go", LineStart: 1}

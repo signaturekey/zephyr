@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/signaturekey/zephyr/internal/run"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCollectWorkingTreeCombinesChangesWithoutDuplication(t *testing.T) {
@@ -26,9 +27,7 @@ func TestCollectWorkingTreeCombinesChangesWithoutDuplication(t *testing.T) {
 	repository.git(t, "add", "--", "regular.txt")
 	repository.append(t, "regular.txt", "unstaged\n")
 	repository.git(t, "mv", "--", "rename.txt", "renamed file.txt")
-	if err := os.Remove(filepath.Join(repository.path, "delete.txt")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Remove(filepath.Join(repository.path, "delete.txt")))
 	repository.write(t, "binary.bin", []byte{0, 8, 9, 10})
 	repository.git(t, "add", "--", "binary.bin")
 	repository.write(t, "generated/value.pb.go", []byte("package generated\n// changed\n"))
@@ -41,9 +40,7 @@ func TestCollectWorkingTreeCombinesChangesWithoutDuplication(t *testing.T) {
 		Repository: repository.path,
 		Source:     run.SourceWorkingTree,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	statusAfter := repository.git(t, "status", "--porcelain=v2", "-z", "--untracked-files=all")
 	if statusBefore != statusAfter {
 		t.Fatal("collector changed the Git working tree or index")
@@ -114,18 +111,15 @@ func TestCollectorDisablesRepositoryFSMonitorHook(t *testing.T) {
 	repository.commitAll(t, "base")
 	marker := filepath.Join(t.TempDir(), "fsmonitor-ran")
 	hook := filepath.Join(t.TempDir(), "fsmonitor")
-	if err := os.WriteFile(hook, []byte("#!/bin/sh\ntouch \""+marker+"\"\nprintf '0\\n'\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(hook, []byte("#!/bin/sh\ntouch \""+marker+"\"\nprintf '0\\n'\n"), 0o700))
 	repository.git(t, "config", "core.fsmonitor", hook)
 	repository.write(t, "base.txt", []byte("changed\n"))
 
-	if _, err := repository.collector(t).Collect(context.Background(), Options{
+	_, err := repository.collector(t).Collect(context.Background(), Options{
 		Repository: repository.path,
 		Source:     run.SourceWorkingTree,
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatalf("repository fsmonitor hook executed; stat error = %v", err)
 	}
@@ -149,14 +143,10 @@ func TestCollectorRejectsExternalFiltersBeforeWorkingTreeCommands(t *testing.T) 
 
 				marker := filepath.Join(t.TempDir(), "filter-ran")
 				filter := filepath.Join(t.TempDir(), "content-filter")
-				if err := os.WriteFile(filter, []byte("#!/bin/sh\ntouch \""+marker+"\"\ncat\n"), 0o700); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.WriteFile(filter, []byte("#!/bin/sh\ntouch \""+marker+"\"\ncat\n"), 0o700))
 				if includedConfig {
 					include := filepath.Join(t.TempDir(), "filters.config")
-					if err := os.WriteFile(include, []byte("[filter \"zephyraudit\"]\n\t"+field+" = "+filter+"\n"), 0o600); err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, os.WriteFile(include, []byte("[filter \"zephyraudit\"]\n\t"+field+" = "+filter+"\n"), 0o600))
 					repository.git(t, "config", "include.path", include)
 				} else {
 					repository.git(t, "config", "filter.zephyraudit."+field, filter)
@@ -167,9 +157,7 @@ func TestCollectorRejectsExternalFiltersBeforeWorkingTreeCommands(t *testing.T) 
 					Repository: repository.path,
 					Source:     run.SourceWorkingTree,
 				})
-				if !errors.Is(err, ErrUnsafeGitConfig) {
-					t.Fatalf("collector error = %v, want ErrUnsafeGitConfig", err)
-				}
+				require.ErrorIs(t, err, ErrUnsafeGitConfig)
 				if _, statErr := os.Stat(marker); !errors.Is(statErr, os.ErrNotExist) {
 					t.Fatalf("external %s filter executed; marker stat error = %v", field, statErr)
 				}
@@ -178,9 +166,7 @@ func TestCollectorRejectsExternalFiltersBeforeWorkingTreeCommands(t *testing.T) 
 					Repository: repository.path,
 					Source:     run.SourcePlanOnly,
 				})
-				if planErr != nil {
-					t.Fatalf("plan-only collection must skip working-tree filters: %v", planErr)
-				}
+				require.NoError(t, planErr, "plan-only collection must skip working-tree filters")
 				if len(planOnly.Status.Entries) != 0 || len(planOnly.Status.Untracked) != 0 {
 					t.Fatalf("plan-only collection inspected worktree status: %#v", planOnly.Status)
 				}
@@ -216,16 +202,12 @@ func TestCollectorAllowsIndexAndObjectDiffsWithConfiguredFilters(t *testing.T) {
 
 				marker := filepath.Join(t.TempDir(), "filter-ran")
 				filter := filepath.Join(t.TempDir(), "content-filter")
-				if err := os.WriteFile(filter, []byte("#!/bin/sh\ntouch \""+marker+"\"\ncat\n"), 0o700); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.WriteFile(filter, []byte("#!/bin/sh\ntouch \""+marker+"\"\ncat\n"), 0o700))
 				repository.git(t, "config", "filter.zephyraudit."+field, filter)
 				repository.write(t, "ignored.txt", []byte("unrelated dirty change\n"))
 
 				snapshot, err := repository.collector(t).Collect(context.Background(), options)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				if !strings.Contains(snapshot.Patches.Full, "reviewed change") {
 					t.Fatalf("%s patch misses reviewed content:\n%s", source, snapshot.Patches.Full)
 				}
@@ -253,9 +235,7 @@ func TestCollectStagedExcludesUnstagedDiff(t *testing.T) {
 		Repository: repository.path,
 		Source:     run.SourceStaged,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if !strings.Contains(snapshot.Patches.Full, "staged-only") || strings.Contains(snapshot.Patches.Full, "unstaged-only") {
 		t.Fatalf("staged scope patch is wrong:\n%s", snapshot.Patches.Full)
 	}
@@ -281,9 +261,7 @@ func TestCollectBranchIncludesCommittedAndWorkingTreeChanges(t *testing.T) {
 		Source:     run.SourceBranch,
 		BaseRef:    "main",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if snapshot.Repository.MergeBaseSHA != baseSHA || snapshot.Repository.BaseSHA != baseSHA {
 		t.Fatalf("branch base metadata = %#v, want %s", snapshot.Repository, baseSHA)
 	}
@@ -305,9 +283,7 @@ func TestCollectCommitRangeIgnoresWorkingTree(t *testing.T) {
 		Source:      run.SourceCommitRange,
 		CommitRange: from + ".." + to,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if snapshot.Repository.BaseSHA != from || snapshot.Repository.TargetSHA != to {
 		t.Fatalf("range metadata = %#v", snapshot.Repository)
 	}
@@ -329,9 +305,7 @@ func TestCollectPlanOnlyHasMetadataWithoutDiff(t *testing.T) {
 		Repository: repository.path,
 		Source:     run.SourcePlanOnly,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if snapshot.Patches != (Patches{}) || len(snapshot.Changes) != 0 {
 		t.Fatalf("plan-only snapshot contains a diff: %#v", snapshot)
 	}
@@ -347,9 +321,7 @@ func TestCollectPlanOnlySupportsUnbornBranch(t *testing.T) {
 		Repository: repository.path,
 		Source:     run.SourcePlanOnly,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if snapshot.Repository.HeadSHA != "" || snapshot.Repository.Detached || snapshot.Repository.Branch != "main" {
 		t.Fatalf("unborn branch metadata = %#v", snapshot.Repository)
 	}

@@ -2,30 +2,26 @@ package routing
 
 import (
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/signaturekey/zephyr/internal/config"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRouteImplementationSelectsBaseAndGoRoles(t *testing.T) {
 	cfg := mustConfig(t, nil)
 	result, err := Route(cfg, Input{Mode: ModeImplementation, ChangedPaths: []string{"main.go"}, HasChanges: true})
-	if err != nil {
-		t.Fatalf("Route: %v", err)
-	}
+	require.NoError(t, err, "route")
 
 	want := []string{config.RoleCodeReviewer, config.RoleGolangExpert}
-	if got := decisionRoles(result.Selected); !reflect.DeepEqual(got, want) {
-		t.Fatalf("selected roles = %v, want %v", got, want)
+	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
+		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
 	}
-	if len(result.Excluded) != len(config.KnownRoles())-len(want) {
-		t.Fatalf("excluded role count = %d", len(result.Excluded))
-	}
-	if !hasReason(result.Selected[0], ReasonRequiredByMode) {
-		t.Fatalf("base role lacks required reason: %+v", result.Selected[0])
-	}
+	assert.Len(t, result.Excluded, len(config.KnownRoles())-len(want), "excluded role count")
+	assert.True(t, hasReason(result.Selected[0], ReasonRequiredByMode), "base role lacks required reason")
 	if reason := reasonWithCode(result.Selected[1], ReasonRoutingRule); reason == nil || len(reason.MatchedPaths) != 1 || reason.MatchedPaths[0] != "main.go" {
 		t.Fatalf("Go role lacks path evidence: %+v", result.Selected[1])
 	}
@@ -35,15 +31,14 @@ func TestRoutePythonChangesSelectPythonExpert(t *testing.T) {
 	result, err := Route(mustConfig(t, nil), Input{
 		Mode: ModeImplementation, ChangedPaths: []string{"services/payments/worker.py"}, HasChanges: true,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	want := []string{config.RoleCodeReviewer, "python-expert"}
-	if got := decisionRoles(result.Selected); !reflect.DeepEqual(got, want) {
-		t.Fatalf("selected roles = %v, want %v", got, want)
+	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
+		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
 	}
 	decision := decisionForRole(result.Selected, "python-expert")
-	if reason := reasonWithCode(*decision, ReasonRoutingRule); reason == nil || !reflect.DeepEqual(reason.MatchedPaths, []string{"services/payments/worker.py"}) {
+	require.NotNil(t, decision)
+	if reason := reasonWithCode(*decision, ReasonRoutingRule); reason == nil || cmp.Diff([]string{"services/payments/worker.py"}, reason.MatchedPaths) != "" {
 		t.Fatalf("Python role lacks path evidence: %+v", decision)
 	}
 }
@@ -55,17 +50,15 @@ func TestRouteTypeScriptFrontendSelectsSpecialists(t *testing.T) {
 		Signals:      []string{"typescript", "frontend", "tests"},
 		HasChanges:   true,
 	})
-	if err != nil {
-		t.Fatalf("Route: %v", err)
-	}
+	require.NoError(t, err, "route")
 	want := []string{
 		config.RoleCodeReviewer,
 		config.RoleTypeScriptExpert,
 		config.RoleFrontendExpert,
 		config.RoleQAExpert,
 	}
-	if got := decisionRoles(result.Selected); !reflect.DeepEqual(got, want) {
-		t.Fatalf("selected roles = %v, want %v", got, want)
+	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
+		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -73,12 +66,10 @@ func TestRouteSkillChangesSelectAuthoringExpert(t *testing.T) {
 	for _, path := range []string{"frontend/skills/example/SKILL.md", "AGENTS.md", "services/payments/AGENTS.md", "CLAUDE.md", "frontend/CLAUDE.md"} {
 		t.Run(path, func(t *testing.T) {
 			result, err := Route(mustConfig(t, nil), Input{Mode: ModeImplementation, ChangedPaths: []string{path}, HasChanges: true})
-			if err != nil {
-				t.Fatalf("Route: %v", err)
-			}
+			require.NoError(t, err, "route")
 			want := []string{config.RoleCodeReviewer, config.RoleSkillAuthoringExpert}
-			if got := decisionRoles(result.Selected); !reflect.DeepEqual(got, want) {
-				t.Fatalf("selected roles = %v, want %v", got, want)
+			if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
+				t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -96,9 +87,7 @@ func TestRouteOperationalChangesSelectFirstIterationExperts(t *testing.T) {
 		Signals:    []string{"reliability", "messaging", "infrastructure", "storage"},
 		HasChanges: true,
 	})
-	if err != nil {
-		t.Fatalf("Route: %v", err)
-	}
+	require.NoError(t, err, "route")
 	want := []string{
 		config.RoleCodeReviewer,
 		config.RoleReliabilityExpert,
@@ -107,18 +96,16 @@ func TestRouteOperationalChangesSelectFirstIterationExperts(t *testing.T) {
 		config.RoleInfrastructureExpert,
 		config.RoleGolangExpert,
 	}
-	if got := decisionRoles(result.Selected); !reflect.DeepEqual(got, want) {
-		t.Fatalf("selected roles = %v, want %v", got, want)
+	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
+		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
 	}
 }
 
 func TestRoutePlanSelectsArchitect(t *testing.T) {
 	result, err := Route(mustConfig(t, nil), Input{Mode: ModePlan, HasPlan: true})
-	if err != nil {
-		t.Fatalf("Route: %v", err)
-	}
-	if got, want := decisionRoles(result.Selected), []string{config.RoleArchitectReviewer}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("selected roles = %v, want %v", got, want)
+	require.NoError(t, err, "route")
+	if diff := cmp.Diff([]string{config.RoleArchitectReviewer}, decisionRoles(result.Selected)); diff != "" {
+		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -141,17 +128,11 @@ func TestRouteAutoMode(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			result, err := Route(cfg, test.input)
 			if test.wantErr {
-				if !errors.Is(err, ErrInvalidInput) {
-					t.Fatalf("error = %v, want ErrInvalidInput", err)
-				}
+				require.ErrorIs(t, err, ErrInvalidInput)
 				return
 			}
-			if err != nil {
-				t.Fatalf("Route: %v", err)
-			}
-			if result.Mode != test.wantMode {
-				t.Fatalf("mode = %q, want %q", result.Mode, test.wantMode)
-			}
+			require.NoError(t, err, "route")
+			assert.Equal(t, test.wantMode, result.Mode)
 		})
 	}
 }
@@ -168,9 +149,7 @@ func TestRouteStandardSelectsEveryMatchedRole(t *testing.T) {
 		HasChanges: true,
 	}
 	result, err := Route(mustConfig(t, nil), input)
-	if err != nil {
-		t.Fatalf("Route: %v", err)
-	}
+	require.NoError(t, err, "route")
 
 	want := []string{
 		config.RoleCodeReviewer,
@@ -179,8 +158,8 @@ func TestRouteStandardSelectsEveryMatchedRole(t *testing.T) {
 		config.RoleContractReviewer,
 		config.RoleGolangExpert,
 	}
-	if got := decisionRoles(result.Selected); !reflect.DeepEqual(got, want) {
-		t.Fatalf("selected roles = %v, want %v", got, want)
+	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
+		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -192,9 +171,7 @@ func TestRouteThoroughSelectsEveryMatchedRole(t *testing.T) {
 		Signals:      []string{"security", "architecture", "tests"},
 		HasChanges:   true,
 	})
-	if err != nil {
-		t.Fatalf("Route: %v", err)
-	}
+	require.NoError(t, err, "route")
 	want := []string{
 		config.RoleCodeReviewer,
 		config.RoleSecurityAuditor,
@@ -204,8 +181,8 @@ func TestRouteThoroughSelectsEveryMatchedRole(t *testing.T) {
 		config.RoleArchitectReviewer,
 		config.RoleQAExpert,
 	}
-	if got := decisionRoles(result.Selected); !reflect.DeepEqual(got, want) {
-		t.Fatalf("selected roles = %v, want %v", got, want)
+	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
+		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -217,12 +194,10 @@ func TestRouteForceIncludeOutranksDetectedOptionalRole(t *testing.T) {
 		Signals:      []string{"security"},
 		ForceInclude: []string{config.RoleQAExpert},
 	})
-	if err != nil {
-		t.Fatalf("Route: %v", err)
-	}
+	require.NoError(t, err, "route")
 	want := []string{config.RoleCodeReviewer, config.RoleQAExpert}
-	if got := decisionRoles(result.Selected); !reflect.DeepEqual(got, want) {
-		t.Fatalf("selected roles = %v, want %v", got, want)
+	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
+		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
 	}
 	security := decisionForRole(result.Excluded, config.RoleSecurityAuditor)
 	if security == nil || !hasReason(*security, ReasonProfileLimit) {
@@ -289,7 +264,7 @@ routing:
 		t.Fatal("rule did not match both condition groups")
 	}
 	reason := reasonWithCode(*decision, ReasonRoutingRule)
-	if reason == nil || !reflect.DeepEqual(reason.MatchedPaths, []string{"cmd/zephyr/main.go"}) || !reflect.DeepEqual(reason.MatchedSignals, []string{"public-entrypoint"}) {
+	if reason == nil || cmp.Diff([]string{"cmd/zephyr/main.go"}, reason.MatchedPaths) != "" || cmp.Diff([]string{"public-entrypoint"}, reason.MatchedSignals) != "" {
 		t.Fatalf("unexpected routing evidence: %+v", reason)
 	}
 }
@@ -374,8 +349,8 @@ func TestRouteIsDeterministic(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("route %d was nondeterministic:\n got %#v\nwant %#v", i, got, want)
+		if diff := cmp.Diff(want, got); diff != "" {
+			t.Fatalf("route %d was nondeterministic (-want +got):\n%s", i, diff)
 		}
 	}
 }
@@ -383,9 +358,7 @@ func TestRouteIsDeterministic(t *testing.T) {
 func mustConfig(t *testing.T, project []byte) config.Config {
 	t.Helper()
 	cfg, err := config.LoadBytes(project)
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
+	require.NoError(t, err, "load config")
 	return cfg
 }
 

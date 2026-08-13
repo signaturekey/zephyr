@@ -21,13 +21,13 @@ import (
 	"github.com/signaturekey/zephyr/internal/schema"
 	"github.com/signaturekey/zephyr/internal/trace"
 	"github.com/signaturekey/zephyr/internal/workflow"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCollectFreezesResolvedModelPolicy(t *testing.T) {
 	repository := newRepository(t)
-	if err := os.MkdirAll(filepath.Join(repository, ".zephyr"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(repository, ".zephyr"), 0o700))
 	writeFile(t, filepath.Join(repository, ".zephyr", "config.yaml"), `version: 1
 model_policy:
   default:
@@ -45,23 +45,15 @@ model_policy:
 	writeFile(t, filepath.Join(repository, "main.go"), "package example\n")
 
 	service, err := workflow.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	initialized, err := service.Init(context.Background(), workflow.InitOptions{
 		Repository: repository, Mode: run.ModeImplementation, Source: run.SourceWorkingTree,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	collected, err := service.Collect(context.Background(), workflow.CollectOptions{RunID: initialized.RunID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	policy, err := os.ReadFile(collected.ModelPolicyPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if strings.Contains(collected.ModelPolicyPath, repository) {
 		t.Fatalf("model policy path leaked into repository: %q", collected.ModelPolicyPath)
 	}
@@ -80,9 +72,7 @@ model_policy:
 	}
 
 	inspected, err := service.Inspect(context.Background(), initialized.RunID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if inspected.Artifacts.ModelPolicy != collected.ModelPolicyPath {
 		t.Fatalf("inspect model policy = %q, want %q", inspected.Artifacts.ModelPolicy, collected.ModelPolicyPath)
 	}
@@ -95,18 +85,14 @@ func TestImplementationLifecycleProducesEvidenceGatedReportWithoutDirtyingReposi
 	statusBefore := gitOutput(t, repository, "status", "--porcelain=v1", "--untracked-files=all")
 
 	service, err := workflow.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	ctx := context.Background()
 	initialized, err := service.Init(ctx, workflow.InitOptions{
 		Repository: repository,
 		Mode:       run.ModeAuto,
 		Source:     run.SourceWorkingTree,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	collected, err := service.Collect(ctx, workflow.CollectOptions{RunID: initialized.RunID})
 	if err != nil {
 		t.Fatal(err)
@@ -200,7 +186,7 @@ func TestImplementationLifecycleProducesEvidenceGatedReportWithoutDirtyingReposi
 	}
 	for name, output := range map[string][]byte{"review.json": reviewJSON, "review.md": markdown} {
 		if strings.Contains(string(output), repository) {
-			t.Fatalf("%s leaked absolute repository root %q", name, repository)
+			t.Fatalf("%s leaked an absolute repository root", name)
 		}
 		logicalOutput := strings.ReplaceAll(string(output), "\\", "")
 		if !strings.Contains(logicalOutput, "reviewed-repository") {
@@ -501,7 +487,7 @@ func TestProjectRestrictedPathsNeverEnterDiffOrPacket(t *testing.T) {
 	readJSONFile(t, routed.PacketPath, &packet)
 	packetJSON := string(marshalJSON(t, packet))
 	if strings.Contains(packetJSON, sentinel) || slices.Contains(packet.ChangedFiles, "private/details.go") {
-		t.Fatalf("project-restricted content/path leaked into packet: %s", packetJSON)
+		t.Fatal("project-restricted content/path leaked into packet")
 	}
 }
 
@@ -600,7 +586,7 @@ func TestUntrackedProjectInstructionsRequireExplicitContentConsent(t *testing.T)
 		t.Fatal(err)
 	}
 	if strings.Contains(string(packetBytes), sentinel) {
-		t.Fatalf("untracked instruction content leaked without consent: %s", packetBytes)
+		t.Fatal("untracked instruction content leaked without consent")
 	}
 	var packet contextpack.Packet
 	readJSONFile(t, routed.PacketPath, &packet)
@@ -641,7 +627,7 @@ func TestTrackedInstructionSymlinkCannotEscapeRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(packetBytes), sentinel) {
-		t.Fatalf("outside symlink content leaked: %s", packetBytes)
+		t.Fatal("outside symlink content leaked")
 	}
 }
 
@@ -829,7 +815,7 @@ func TestParallelCandidateValidationPreservesEveryRole(t *testing.T) {
 	wait.Wait()
 	close(errorsByRole)
 	for validateErr := range errorsByRole {
-		t.Error(validateErr)
+		assert.NoError(t, validateErr)
 	}
 	if t.Failed() {
 		return
@@ -1085,11 +1071,11 @@ func TestTrackedCredentialAssignmentsAreRedactedFromPacket(t *testing.T) {
 	}
 	for _, secret := range []string{awsSecret, kubeSecret} {
 		if strings.Contains(string(packet), secret) {
-			t.Fatalf("tracked credential %q leaked into packet", secret)
+			t.Fatal("tracked credential leaked into packet")
 		}
 	}
 	if !strings.Contains(string(packet), "[REDACTED]") {
-		t.Fatalf("packet does not record credential redaction: %s", packet)
+		t.Fatal("packet does not record credential redaction")
 	}
 }
 

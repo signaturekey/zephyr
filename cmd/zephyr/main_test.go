@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/signaturekey/zephyr/internal/schema"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRecoverCodexOutputCmdWritesValidatedAgentMessage(t *testing.T) {
@@ -18,28 +20,16 @@ func TestRecoverCodexOutputCmdWritesValidatedAgentMessage(t *testing.T) {
 	message := `{"version":1,"run_id":"run-1","role":"architect-reviewer","findings":[]}`
 	events := `{"type":"item.completed","item":{"type":"agent_message","text":"{\"version\":1,\"run_id\":\"run-1\",\"role\":\"architect-reviewer\",\"findings\":[]}"}}` + "\n" +
 		`{"type":"turn.completed"}` + "\n"
-	if err := os.WriteFile(eventsPath, []byte(events), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(eventsPath, []byte(events), 0o600))
 
 	command := RecoverCodexOutputCmd{Kind: "reviewer", Input: eventsPath, Output: outputPath}
-	if err := command.Run(&runtime{ctx: context.Background()}); err != nil {
-		t.Fatalf("Run() error = %v", err)
-	}
+	require.NoError(t, command.Run(&runtime{ctx: context.Background()}))
 	got, err := os.ReadFile(outputPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != message {
-		t.Fatalf("output = %q, want %q", got, message)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, message, string(got))
 	info, err := os.Stat(outputPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("output mode = %o, want 600", info.Mode().Perm())
-	}
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
 func TestVersionCmdIncludesBuildAndProtocolMetadata(t *testing.T) {
@@ -50,9 +40,7 @@ func TestVersionCmdIncludesBuildAndProtocolMetadata(t *testing.T) {
 	})
 
 	var stdout bytes.Buffer
-	if err := (&VersionCmd{}).Run(&runtime{stdout: &stdout}); err != nil {
-		t.Fatalf("Run() error = %v", err)
-	}
+	require.NoError(t, (&VersionCmd{}).Run(&runtime{stdout: &stdout}))
 
 	var got struct {
 		Version         string `json:"version"`
@@ -60,10 +48,9 @@ func TestVersionCmdIncludesBuildAndProtocolMetadata(t *testing.T) {
 		Dirty           string `json:"dirty"`
 		ProtocolVersion int    `json:"protocol_version"`
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
-		t.Fatalf("decode version output: %v", err)
-	}
-	if got.Version != "v1.2.3" || got.Commit != "abc123" || got.Dirty != "false" || got.ProtocolVersion != schema.ProtocolVersion {
-		t.Fatalf("unexpected version output: %+v", got)
-	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
+	assert.Equal(t, "v1.2.3", got.Version)
+	assert.Equal(t, "abc123", got.Commit)
+	assert.Equal(t, "false", got.Dirty)
+	assert.Equal(t, schema.ProtocolVersion, got.ProtocolVersion)
 }

@@ -3,6 +3,9 @@ package redaction
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPathDenied(t *testing.T) {
@@ -27,17 +30,13 @@ func TestPathDenied(t *testing.T) {
 		"docs/credentials.json": true,
 	}
 	for path, want := range tests {
-		if got := p.PathDenied(path); got != want {
-			t.Errorf("PathDenied(%q) = %v, want %v", path, got, want)
-		}
+		assert.Equal(t, want, p.PathDenied(path), "path denied (%q)", path)
 	}
 }
 
 func TestInvalidPatternFailsClosed(t *testing.T) {
 	p := Policy{Enabled: true, DenyPatterns: []string{"["}}
-	if !p.PathDenied("safe.go") {
-		t.Fatal("invalid deny pattern must fail closed")
-	}
+	require.True(t, p.PathDenied("safe.go"), "invalid deny pattern must fail closed")
 }
 
 func TestTextRedactsCommonSecrets(t *testing.T) {
@@ -49,9 +48,9 @@ func TestTextRedactsCommonSecrets(t *testing.T) {
 	}, "\n")
 
 	got := DefaultPolicy(nil).Text(input)
-	for _, secret := range []string{"abc.def.ghi", "hunter2", "supersecret", "\nsecret\n"} {
+	for secretID, secret := range []string{"abc.def.ghi", "hunter2", "supersecret", "\nsecret\n"} {
 		if strings.Contains(got, secret) {
-			t.Fatalf("sanitised output still contains %q: %s", secret, got)
+			t.Errorf("sanitised output contains secret %d", secretID)
 		}
 	}
 }
@@ -60,14 +59,12 @@ func TestTextRedactsQuotedJSONAndQueryTokens(t *testing.T) {
 	policy := DefaultPolicy(nil)
 	input := `{"token":"abc123","client_secret":"xyz"} https://example.invalid/callback?access_token=live-value&next=/`
 	redacted := policy.Text(input)
-	for _, secret := range []string{"abc123", "xyz", "live-value"} {
+	for secretID, secret := range []string{"abc123", "xyz", "live-value"} {
 		if strings.Contains(redacted, secret) {
-			t.Fatalf("secret %q leaked in %q", secret, redacted)
+			t.Errorf("redaction output contains secret %d", secretID)
 		}
 	}
-	if !strings.Contains(redacted, Replacement) {
-		t.Fatalf("replacement missing in %q", redacted)
-	}
+	assert.Contains(t, redacted, Replacement, "replacement missing")
 }
 
 func TestTextRedactsStructuredCredentialAssignments(t *testing.T) {
@@ -79,7 +76,7 @@ func TestTextRedactsStructuredCredentialAssignments(t *testing.T) {
 		"service-account-json=base64-service-account-value",
 	}, "\n")
 	redacted := DefaultPolicy(nil).Text(input)
-	for _, secret := range []string{
+	for secretID, secret := range []string{
 		"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
 		"session-value-123456",
 		"LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t",
@@ -87,7 +84,7 @@ func TestTextRedactsStructuredCredentialAssignments(t *testing.T) {
 		"base64-service-account-value",
 	} {
 		if strings.Contains(redacted, secret) {
-			t.Fatalf("structured credential %q leaked in %q", secret, redacted)
+			t.Errorf("structured credential %d leaked", secretID)
 		}
 	}
 }
@@ -109,12 +106,12 @@ func TestTextRedactsStandaloneCredentialsAndTruncatedPrivateKey(t *testing.T) {
 		"-----BEGIN PRIVATE KEY-----\npartial-key-without-end-marker",
 	}, "\n")
 	redacted := DefaultPolicy(nil).Text(input)
-	for _, secret := range []string{
+	for secretID, secret := range []string{
 		"ghp_", "github_pat_", "xoxb-", "AKIA", "ASIA", "sk-proj-", "glpat-", "sk_live_", "npm_", "AIza",
 		"eyJ", "database-password", "partial-key",
 	} {
 		if strings.Contains(redacted, secret) {
-			t.Fatalf("secret class %q leaked in %q", secret, redacted)
+			t.Errorf("secret class %d leaked", secretID)
 		}
 	}
 }
