@@ -13,14 +13,15 @@
     }
   ],
   "changed_files": ["src/pages/profile.tsx"],
+  "routing_signals": ["react"],
   "plan": null,
-  "reviewer_roles": ["code-reviewer", "typescript-expert", "frontend-expert"],
+  "reviewer_roles": ["code-reviewer", "typescript-expert", "react-expert", "frontend-expert"],
   "candidates": [
     {
-      "id": "frontend-expert-001",
-      "role": "frontend-expert",
+      "id": "react-expert-001",
+      "role": "react-expert",
       "severity": "P1",
-      "category": "reactivity",
+      "category": "react-hooks",
       "title": "Profile keeps data for the initial user",
       "location": {"file": "src/pages/profile.tsx", "line_start": 5, "line_end": 7, "symbol": "Profile"},
       "evidence": {
@@ -38,7 +39,7 @@
   ],
   "verdicts": [
     {
-      "candidate_id": "frontend-expert-001",
+      "candidate_id": "react-expert-001",
       "verdict": "accepted",
       "final_severity": "P1",
       "reason_code": "reachable-stale-state",
@@ -49,7 +50,7 @@
   "expected": {
     "precheck_accepted": 1,
     "precheck_rejected": 0,
-    "final": [{"id": "frontend-expert-001", "severity": "P1", "source_roles": ["frontend-expert"], "duplicate_ids": []}],
+    "final": [{"id": "react-expert-001", "severity": "P1", "source_roles": ["react-expert"], "duplicate_ids": []}],
     "needs_human": 0,
     "rejected_candidates": 0,
     "rejection_reasons": [],

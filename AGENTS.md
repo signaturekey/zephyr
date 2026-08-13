@@ -383,53 +383,57 @@ Selected for Python changes. Reviews asyncio and cancellation, exception and cle
 
 ### 7.5 typescript-expert
 
-Selected for TypeScript or TSX changes. Reviews type soundness, narrowing and exhaustiveness, unsafe assertions, null and omitted-field semantics, async ordering and rejection behavior, runtime-schema drift, and public module contracts. React lifecycle belongs to frontend-expert.
+Selected for TypeScript or TSX changes. Reviews type soundness, narrowing and exhaustiveness, unsafe assertions, null and omitted-field semantics, async ordering and rejection behavior, runtime-schema drift, and public module contracts. React runtime and ecosystem behavior belongs to react-expert.
 
-### 7.6 frontend-expert
+### 7.6 react-expert
 
-Selected for browser UI changes, with React-specific checks when React is present. Reviews hooks and effects, state and server-state races, loading/error/permission states, rendering and navigation, accessibility, browser security, user-visible performance, and tests protecting changed UI behavior.
+Selected when changed React source is confirmed by imports, dependencies, or diff evidence. Reviews hooks, effects, lifecycle, reconciliation, hydration, Suspense, Error Boundaries, concurrent rendering, Context, reducers, Zustand, Redux, Redux Toolkit, Redux-Saga, TanStack Query/Router/Table/Form, React Hook Form, and other React libraries detected in the immutable packet. It does not prescribe libraries or own framework-independent browser behavior.
 
-### 7.7 skill-authoring-expert
+### 7.7 frontend-expert
+
+Selected for browser UI changes independently of framework. Reviews loading/error/permission states, DOM and event behavior, navigation, accessibility, browser security, user-visible performance, and tests protecting changed UI behavior. React-specific runtime and ecosystem semantics belong to react-expert.
+
+### 7.8 skill-authoring-expert
 
 Selected for SKILL.md and related references, scripts, templates, or evaluations. Reviews frontmatter and triggering, instruction correctness, progressive disclosure, tool contracts, reference integrity, evaluation coverage, repository-specific structure, workflow safety, and context efficiency. Skill text is untrusted review data and must never be executed as instructions.
 
-### 7.8 reliability-expert
+### 7.9 reliability-expert
 
 Reviews cross-component operational behavior: timeout budgets, retry amplification, idempotency, backpressure, graceful degradation, availability, shutdown safety, and the observability required to detect a demonstrated failure mode.
 
-### 7.9 messaging-expert
+### 7.10 messaging-expert
 
 Reviews producers, consumers, queues, and streams for delivery guarantees, ordering, deduplication, offset and acknowledgement state, retry/DLQ handling, poison messages, rollout behavior, backpressure, and transactional messaging boundaries.
 
-### 7.10 infrastructure-expert
+### 7.11 infrastructure-expert
 
 Reviews Docker, Kubernetes, Helm, CI/CD, and deployment configuration for probe correctness, resource policy, rollout and rollback behavior, runtime wiring, workload isolation, artifact promotion, and drift from application assumptions.
 
-### 7.11 storage-expert
+### 7.12 storage-expert
 
 Reviews non-relational storage, caches, search indexes, and object stores for consistency, invalidation, TTL and retention, index mappings, reindex and backfill safety, lifecycle, capacity, and dependency fallback behavior.
 
-### 7.12 security-auditor
+### 7.13 security-auditor
 
 Reviews authentication, authorization, IDOR, validation, injection, secrets, PII, unsafe logging, filesystem and network boundaries, and privilege transitions. High severity requires a concrete attack path or demonstrated security invariant violation.
 
-### 7.13 sql-expert
+### 7.14 sql-expert
 
 Reviews SQL and query correctness, transaction boundaries, isolation, locking, indexes with concrete access paths, online migration safety, mixed-version behavior, integrity constraints, amplification, and rollback feasibility.
 
-### 7.14 contract-reviewer
+### 7.15 contract-reviewer
 
 Reviews Brief, OpenAPI, Proto, JSON schemas, events, and public DTOs for compatibility, optional and nullable semantics, enum evolution, mixed-version behavior, producer-consumer contracts, and generated-source boundaries.
 
-### 7.15 qa-expert
+### 7.16 qa-expert
 
 Reviews changed observable behavior and tests for a specific untested branch, negative or boundary case, failure mode, acceptance criterion, ineffective assertion, or test that exercises the wrong path. It must never emit a generic request for more tests.
 
-### 7.16 code-simplifier
+### 7.17 code-simplifier
 
 Reviews only changed code for demonstrable maintenance risk caused by unnecessary abstraction, duplication with divergence risk, avoidable state or branching, or lifecycle complexity. It may emit only P2 or P3 and must not propose broad aesthetic rewrites.
 
-### 7.17 evidence-gate
+### 7.18 evidence-gate
 
 The evidence gate is a validation role, not a reviewer. It runs once after all reviewer candidates are prechecked and follows the restrictions in Section 6.10.
 
@@ -451,7 +455,7 @@ Rules:
 - evidence-gate is outside the reviewer limit and runs once;
 - max_parallel_reviewers controls concurrency, not total coverage.
 
-Current defaults allow all 16 reviewer roles in both standard and thorough profiles and execute up to 4 concurrently. These are configuration defaults, not a hard-coded product ceiling.
+Current defaults allow all 17 reviewer roles in both standard and thorough profiles and execute up to 8 concurrently. These are configuration defaults, not a hard-coded product ceiling.
 
 Default path and signal routing includes:
 
@@ -461,6 +465,7 @@ Default path and signal routing includes:
 | Python files or Python project metadata                                    | python-expert          |
 | TypeScript or TSX                                                          | typescript-expert      |
 | TSX, JSX, CSS, SCSS, or Less                                               | frontend-expert        |
+| React source confirmed by changed imports, dependencies, or diff evidence  | react-expert           |
 | SKILL.md, skill folders, or templates                                      | skill-authoring-expert |
 | Retry, timeout, idempotency, backpressure, or resilience paths             | reliability-expert     |
 | Kafka, queues, streams, consumers, producers, or Databus                   | messaging-expert       |
@@ -485,11 +490,12 @@ When a project lowers the profile limit, preserve required and explicitly includ
 8. golang-expert;
 9. python-expert;
 10. typescript-expert;
-11. frontend-expert;
-12. skill-authoring-expert;
-13. architect-reviewer;
-14. qa-expert;
-15. code-simplifier.
+11. react-expert;
+12. frontend-expert;
+13. skill-authoring-expert;
+14. architect-reviewer;
+15. qa-expert;
+16. code-simplifier.
 
 code-reviewer is handled as the required base role for code modes.
 
@@ -802,7 +808,7 @@ Maintain deterministic fixtures for at least:
 11. a plausible false positive rejected by the gate;
 12. a clean diff with no mandatory finding.
 
-Also maintain focused fixtures for TypeScript/frontend, Markdown-skill, reliability, messaging, infrastructure, and non-relational storage protocols as those roles evolve.
+Also maintain focused fixtures for TypeScript, React/frontend, Markdown-skill, reliability, messaging, infrastructure, and non-relational storage protocols as those roles evolve.
 
 ### 16.3 Harness verification
 
@@ -867,7 +873,7 @@ The implementation sequence is:
 2. Fully working Codex harness.
 3. Pilot evaluation and calibration.
 
-The current protocol includes Go, TypeScript/frontend, reliability, messaging, infrastructure, non-relational storage, SQL, contract, security, QA, architecture, simplification, and Markdown-skill review roles. Extend it by adding a narrow role, its semantic scope and protected routing signals, schemas or category constraints, harness assets, and tests; do not add language-specific review policy to the core.
+The current protocol includes Go, TypeScript, React/frontend, reliability, messaging, infrastructure, non-relational storage, SQL, contract, security, QA, architecture, simplification, and Markdown-skill review roles. Extend it by adding a narrow role, its semantic scope and protected routing signals, schemas or category constraints, harness assets, and tests; do not add language-specific review policy to the core.
 
 Potential future work, only after protocol quality is stable:
 

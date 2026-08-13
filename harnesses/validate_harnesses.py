@@ -21,6 +21,7 @@ REVIEWERS = (
     "golang-expert",
     "python-expert",
     "typescript-expert",
+    "react-expert",
     "frontend-expert",
     "skill-authoring-expert",
     "reliability-expert",

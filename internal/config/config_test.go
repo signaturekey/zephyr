@@ -19,7 +19,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Version != CurrentVersion || cfg.Profile != ProfileStandard || cfg.Language != "auto" {
 		t.Fatalf("unexpected defaults: version=%d profile=%q language=%q", cfg.Version, cfg.Profile, cfg.Language)
 	}
-	wantLimits := Limits{MaxParallelReviewers: 8, MaxRolesStandard: 16, MaxRolesThorough: 16, MaxFinalFindings: 30}
+	wantLimits := Limits{MaxParallelReviewers: 8, MaxRolesStandard: 17, MaxRolesThorough: 17, MaxFinalFindings: 30}
 	if cfg.Limits != wantLimits {
 		t.Fatalf("limits = %+v, want %+v", cfg.Limits, wantLimits)
 	}
@@ -32,8 +32,11 @@ func TestLoadDefaults(t *testing.T) {
 	if roleConfig, ok := cfg.Roles["python-expert"]; !ok || !roleConfig.Enabled {
 		t.Error("default python-expert role is not enabled")
 	}
-	if len(cfg.Routing) != 25 {
-		t.Fatalf("routing rule count = %d, want 25", len(cfg.Routing))
+	if roleConfig, ok := cfg.Roles[RoleReactExpert]; !ok || !roleConfig.Enabled {
+		t.Error("default react-expert role is not enabled")
+	}
+	if len(cfg.Routing) != 26 {
+		t.Fatalf("routing rule count = %d, want 26", len(cfg.Routing))
 	}
 	if !cfg.Redaction.Enabled || len(cfg.Redaction.DenyPatterns) != 3 {
 		t.Fatalf("unexpected redaction defaults: %+v", cfg.Redaction)
@@ -71,7 +74,7 @@ redaction:
 	if cfg.Limits.MaxParallelReviewers != 4 || cfg.Limits.MaxFinalFindings != 12 {
 		t.Errorf("project limits not applied: %+v", cfg.Limits)
 	}
-	if cfg.Limits.MaxRolesStandard != 16 || cfg.Limits.MaxRolesThorough != 16 {
+	if cfg.Limits.MaxRolesStandard != 17 || cfg.Limits.MaxRolesThorough != 17 {
 		t.Errorf("unmentioned default limits were lost: %+v", cfg.Limits)
 	}
 	if cfg.Roles[RoleCodeSimplifier].Enabled {
@@ -80,7 +83,7 @@ redaction:
 	if !cfg.Roles[RoleCodeReviewer].Enabled {
 		t.Error("unmentioned default role was lost")
 	}
-	if len(cfg.Routing) != 26 {
+	if len(cfg.Routing) != 27 {
 		t.Fatalf("routing rule count = %d, want defaults plus project rule", len(cfg.Routing))
 	}
 	if !contains(cfg.RestrictedPaths, "vendor/**") || !contains(cfg.RestrictedPaths, "third_party/**") {
@@ -128,7 +131,7 @@ func TestLoadBytesRejectsInvalidConfig(t *testing.T) {
 		{name: "future version", project: "version: 2\n", want: "version must be 1"},
 		{name: "profile", project: "version: 1\nprofile: maximal\n", want: "profile must be"},
 		{name: "language", project: "version: 1\nlanguage: rust\n", want: "language must be"},
-		{name: "parallel exceeds thorough", project: "version: 1\nlimits:\n  max_parallel_reviewers: 17\n", want: "cannot exceed"},
+		{name: "parallel exceeds thorough", project: "version: 1\nlimits:\n  max_parallel_reviewers: 18\n", want: "cannot exceed"},
 		{name: "unknown role", project: "version: 1\nroles:\n  oracle:\n    enabled: true\n", want: "unknown role"},
 		{name: "unknown role field", project: "version: 1\nroles:\n  golang-expert:\n    active: true\n", want: "field active not found"},
 		{name: "empty routing condition", project: "version: 1\nrouting:\n  - when: {}\n    add_roles: [golang-expert]\n", want: "must contain paths or signals"},

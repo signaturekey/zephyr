@@ -53,9 +53,17 @@ func TestReviewerScopeDefinitions(t *testing.T) {
 		{
 			role: config.RoleFrontendExpert,
 			categories: []Category{
-				CategoryCorrectness, CategoryReactivity, CategoryComponentLifecycle, CategoryStateManagement,
-				CategoryServerState, CategoryRenderingCorrectness, CategoryAccessibility,
+				CategoryCorrectness, CategoryRenderingCorrectness, CategoryAccessibility,
 				CategoryFrontendPerformance, CategoryBrowserSecurity, CategoryUIResilience, CategoryFrontendRouting,
+			},
+			locations: LocationCode,
+		},
+		{
+			role: config.RoleReactExpert,
+			categories: []Category{
+				CategoryCorrectness, CategoryReactHooks, CategoryReactLifecycle, CategoryReactRendering,
+				CategoryReactStateManagement, CategoryReactServerState, CategoryReactConcurrency,
+				CategoryReactLibraryIntegration,
 			},
 			locations: LocationCode,
 		},
@@ -270,13 +278,14 @@ func TestReviewerScopesAllowDomainRolesToCitePlanArtifacts(t *testing.T) {
 	}
 }
 
-func TestFrontendAndTypeScriptReviewerScopes(t *testing.T) {
+func TestFrontendReactAndTypeScriptReviewerScopes(t *testing.T) {
 	tests := []struct {
 		role     string
 		category Category
 	}{
 		{config.RoleTypeScriptExpert, CategoryUnsafeTypeAssertion},
-		{config.RoleFrontendExpert, CategoryComponentLifecycle},
+		{config.RoleReactExpert, CategoryReactLifecycle},
+		{config.RoleFrontendExpert, CategoryAccessibility},
 	}
 	for _, test := range tests {
 		t.Run(test.role, func(t *testing.T) {

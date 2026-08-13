@@ -37,16 +37,19 @@ const (
 	CategoryModuleContract                Category = "module-contract"
 	CategoryNullabilitySemantics          Category = "nullability-semantics"
 	CategoryRuntimeSchemaMismatch         Category = "runtime-schema-mismatch"
-	CategoryReactivity                    Category = "reactivity"
-	CategoryComponentLifecycle            Category = "component-lifecycle"
-	CategoryStateManagement               Category = "state-management"
-	CategoryServerState                   Category = "server-state"
 	CategoryRenderingCorrectness          Category = "rendering-correctness"
 	CategoryAccessibility                 Category = "accessibility"
 	CategoryFrontendPerformance           Category = "frontend-performance"
 	CategoryBrowserSecurity               Category = "browser-security"
 	CategoryUIResilience                  Category = "ui-resilience"
 	CategoryFrontendRouting               Category = "frontend-routing"
+	CategoryReactHooks                    Category = "react-hooks"
+	CategoryReactLifecycle                Category = "react-lifecycle"
+	CategoryReactRendering                Category = "react-rendering"
+	CategoryReactStateManagement          Category = "react-state-management"
+	CategoryReactServerState              Category = "react-server-state"
+	CategoryReactConcurrency              Category = "react-concurrency"
+	CategoryReactLibraryIntegration       Category = "react-library-integration"
 	CategorySkillFrontmatter              Category = "skill-frontmatter"
 	CategorySkillTriggering               Category = "skill-triggering"
 	CategoryInstructionCorrectness        Category = "instruction-correctness"
@@ -233,16 +236,26 @@ func reviewerScopeForRole(role string) (reviewerScope, bool) {
 		return reviewerScope{
 			categories: []Category{
 				CategoryCorrectness,
-				CategoryReactivity,
-				CategoryComponentLifecycle,
-				CategoryStateManagement,
-				CategoryServerState,
 				CategoryRenderingCorrectness,
 				CategoryAccessibility,
 				CategoryFrontendPerformance,
 				CategoryBrowserSecurity,
 				CategoryUIResilience,
 				CategoryFrontendRouting,
+			},
+			locations: LocationCode,
+		}, true
+	case config.RoleReactExpert:
+		return reviewerScope{
+			categories: []Category{
+				CategoryCorrectness,
+				CategoryReactHooks,
+				CategoryReactLifecycle,
+				CategoryReactRendering,
+				CategoryReactStateManagement,
+				CategoryReactServerState,
+				CategoryReactConcurrency,
+				CategoryReactLibraryIntegration,
 			},
 			locations: LocationCode,
 		}, true

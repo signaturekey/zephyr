@@ -954,8 +954,9 @@ func TestInvalidSemanticRoutingUsesConservativeFallback(t *testing.T) {
 		t.Fatalf("invalid semantic output did not preserve coverage: %#v", finalized.Routing)
 	}
 	fallbackTrace := semanticTraceEvent(t, initialized.RunDir)
+	wantSelectedRoles := fmt.Sprint(len(config.KnownRoles()))
 	if fallbackTrace.Status != trace.StatusPartial || fallbackTrace.Metadata["validation_status"] != "invalid" ||
-		fallbackTrace.Metadata["fallback_category"] != "invalid-output" || fallbackTrace.Metadata["selected_roles"] != "16" {
+		fallbackTrace.Metadata["fallback_category"] != "invalid-output" || fallbackTrace.Metadata["selected_roles"] != wantSelectedRoles {
 		t.Fatalf("semantic fallback trace lacks final lifecycle metadata: %#v", fallbackTrace)
 	}
 }
@@ -999,8 +1000,9 @@ func TestSemanticRoutingTimeoutUsesConservativeFallbackBeforeReview(t *testing.T
 		t.Fatalf("timeout fallback did not preserve coverage: %#v", finalized.Routing)
 	}
 	fallbackTrace := semanticTraceEvent(t, initialized.RunDir)
+	wantSelectedRoles := fmt.Sprint(len(config.KnownRoles()))
 	if fallbackTrace.Status != trace.StatusPartial || fallbackTrace.Metadata["fallback_category"] != "timeout" ||
-		fallbackTrace.Metadata["selected_roles"] != "16" {
+		fallbackTrace.Metadata["selected_roles"] != wantSelectedRoles {
 		t.Fatalf("timeout fallback trace is incomplete: %#v", fallbackTrace)
 	}
 }

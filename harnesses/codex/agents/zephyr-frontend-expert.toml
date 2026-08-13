@@ -1,5 +1,5 @@
 name = "zephyr_frontend_expert"
-description = "Read-only Zephyr browser UI and React behavior reviewer; use only when routing selects frontend-expert."
+description = "Read-only Zephyr framework-agnostic browser UI reviewer; use only when routing selects frontend-expert."
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 approval_policy = "never"

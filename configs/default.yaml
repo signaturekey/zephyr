@@ -25,6 +25,7 @@ model_policy:
         golang-expert: {}
         python-expert: {}
         typescript-expert: {}
+        react-expert: {}
         frontend-expert: {}
         reliability-expert:
           model: gpt-5.6-sol
@@ -50,8 +51,8 @@ model_policy:
 
 limits:
   max_parallel_reviewers: 8
-  max_roles_standard: 16
-  max_roles_thorough: 16
+  max_roles_standard: 17
+  max_roles_thorough: 17
   max_final_findings: 30
 
 roles:
@@ -64,6 +65,8 @@ roles:
   python-expert:
     enabled: true
   typescript-expert:
+    enabled: true
+  react-expert:
     enabled: true
   frontend-expert:
     enabled: true
@@ -112,6 +115,10 @@ routing:
   - when:
       paths: ["**/*.tsx", "**/*.jsx", "**/*.css", "**/*.scss", "**/*.less"]
     add_roles: ["frontend-expert"]
+  - when:
+      paths: ["**/*.tsx", "**/*.jsx"]
+      signals: ["react"]
+    add_roles: ["react-expert"]
   - when:
       paths:
         [
