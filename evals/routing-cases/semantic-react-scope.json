@@ -4,10 +4,10 @@
   "has_plan": true,
   "has_changes": false,
   "changed_paths": [],
-  "signals": ["architecture", "frontend"],
+  "signals": ["architecture", "frontend", "react"],
   "strong_signals": [],
   "scope_text": "The implementation specification explicitly requires changing React UI loading, permission, and error states in the browser.",
-  "semantic_included_roles": ["frontend-expert"],
-  "expected_selected_roles": ["architect-reviewer", "frontend-expert"],
+  "semantic_included_roles": ["react-expert", "frontend-expert"],
+  "expected_selected_roles": ["architect-reviewer", "react-expert", "frontend-expert"],
   "expected_excluded_roles": []
 }

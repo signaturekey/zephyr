@@ -137,6 +137,29 @@ func TestFrontendAndSkillPathsProduceTechnologyAndRoutingSignals(t *testing.T) {
 	}
 }
 
+func TestReactSignalRequiresChangedReactEvidence(t *testing.T) {
+	withoutEvidence := Packet{Mode: "implementation", ChangedFiles: []string{"src/widget.tsx"}}
+	assert.NotContains(t, detectRoutingSignals(withoutEvidence), "react")
+	assert.NotContains(t, detectStrongRoutingSignals(withoutEvidence), "react")
+
+	withEvidence := Packet{
+		Mode:         "implementation",
+		ChangedFiles: []string{"src/widget.tsx"},
+		Diff:         Diff{Full: "+import { useEffect } from 'react'\n+import { useQuery } from '@tanstack/react-query'"},
+	}
+	assert.Contains(t, detectRoutingSignals(withEvidence), "react")
+	assert.Contains(t, detectStrongRoutingSignals(withEvidence), "react")
+}
+
+func TestReactDependencyProducesStrongSignalForAutomaticJSX(t *testing.T) {
+	packet := Packet{
+		Mode:         "implementation",
+		ChangedFiles: []string{"package.json", "src/widget.tsx"},
+		Diff:         Diff{Full: "+    \"react\": \"^19.0.0\"\n+export const Widget = () => <div />"},
+	}
+	assert.Contains(t, detectStrongRoutingSignals(packet), "react")
+}
+
 func TestPythonPathsProduceTechnologyAndRoutingSignals(t *testing.T) {
 	paths := []string{"services/payments/worker.py", "pyproject.toml", "uv.lock"}
 	technologies := detectTechnologies(paths)

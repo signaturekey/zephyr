@@ -232,7 +232,8 @@ Hybrid routing защищает роли по mode, user override и changed pat
 | `golang-expert` | Go API, context, errors, concurrency и lifetime ресурсов |
 | `python-expert` | Python runtime, asyncio, exceptions, typing и lifetime ресурсов |
 | `typescript-expert` | Type soundness, nullability, async semantics и runtime drift |
-| `frontend-expert` | React lifecycle, UI-состояния, accessibility и browser behavior |
+| `react-expert` | React runtime, hooks, rendering, state managers и ecosystem libraries |
+| `frontend-expert` | Framework-agnostic UI-состояния, accessibility и browser behavior |
 | `skill-authoring-expert` | `SKILL.md`, references, scripts, templates и evals |
 | `reliability-expert` | Timeout, retry, idempotency, backpressure и degradation |
 | `messaging-expert` | Delivery, ordering, acknowledgements, retry и DLQ |
@@ -356,8 +357,8 @@ model_policy:
 
 limits:
   max_parallel_reviewers: 4
-  max_roles_standard: 16
-  max_roles_thorough: 16
+  max_roles_standard: 17
+  max_roles_thorough: 17
   max_final_findings: 30
 
 roles:

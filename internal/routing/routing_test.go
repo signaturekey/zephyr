@@ -47,19 +47,37 @@ func TestRouteTypeScriptFrontendSelectsSpecialists(t *testing.T) {
 	result, err := Route(mustConfig(t, nil), Input{
 		Mode:         ModeImplementation,
 		ChangedPaths: []string{"src/pages/profile.tsx", "src/api/profile.ts"},
-		Signals:      []string{"typescript", "frontend", "tests"},
+		Signals:      []string{"typescript", "frontend", "react", "tests"},
 		HasChanges:   true,
 	})
 	require.NoError(t, err, "route")
 	want := []string{
 		config.RoleCodeReviewer,
 		config.RoleTypeScriptExpert,
+		config.RoleReactExpert,
 		config.RoleFrontendExpert,
 		config.RoleQAExpert,
 	}
 	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
 		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
 	}
+}
+
+func TestRouteTSXWithoutReactSignalDoesNotSelectReactExpert(t *testing.T) {
+	result, err := Route(mustConfig(t, nil), Input{
+		Mode: ModeImplementation, ChangedPaths: []string{"src/widget.tsx"}, HasChanges: true,
+	})
+	require.NoError(t, err)
+	assert.Nil(t, decisionForRole(result.Selected, config.RoleReactExpert))
+	assert.NotNil(t, decisionForRole(result.Selected, config.RoleFrontendExpert))
+}
+
+func TestRouteReactSignalRequiresReactSourcePath(t *testing.T) {
+	result, err := Route(mustConfig(t, nil), Input{
+		Mode: ModeImplementation, ChangedPaths: []string{"src/theme.css"}, Signals: []string{"react"}, HasChanges: true,
+	})
+	require.NoError(t, err)
+	assert.Nil(t, decisionForRole(result.Selected, config.RoleReactExpert))
 }
 
 func TestRouteSkillChangesSelectAuthoringExpert(t *testing.T) {

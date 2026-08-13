@@ -25,6 +25,7 @@ const (
 	RolePythonExpert         = "python-expert"
 	RoleTypeScriptExpert     = "typescript-expert"
 	RoleFrontendExpert       = "frontend-expert"
+	RoleReactExpert          = "react-expert"
 	RoleSkillAuthoringExpert = "skill-authoring-expert"
 	RoleReliabilityExpert    = "reliability-expert"
 	RoleMessagingExpert      = "messaging-expert"
@@ -91,6 +92,7 @@ func KnownRoles() []string {
 		RoleGolangExpert,
 		RolePythonExpert,
 		RoleTypeScriptExpert,
+		RoleReactExpert,
 		RoleFrontendExpert,
 		RoleSkillAuthoringExpert,
 		RoleReliabilityExpert,

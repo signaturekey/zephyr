@@ -731,6 +731,7 @@ func detectRoutingSignals(packet Packet) []string {
 		{signal: "contract", terms: []string{"openapi", "protobuf", "proto contract", "api contract", "public dto", "backward compatibility", "event contract"}},
 		{signal: "typescript", terms: []string{"typescript", "tsconfig", "type narrowing", "type assertion", "@ts-ignore"}},
 		{signal: "frontend", terms: []string{"frontend", "react", "useeffect", "usestate", "react query", "redux", "browser", "accessibility", "a11y"}},
+		{signal: "react", terms: []string{"from 'react'", "from \"react\"", "\"react\":", "react@", "react-dom", "useeffect", "usestate", "usereducer", "@tanstack/react-", "zustand", "@reduxjs/toolkit", "react-redux", "redux-saga", "react-hook-form"}},
 		{signal: "skill-authoring", terms: []string{"skill.md", "frontmatter", "progressive disclosure", "skill-validator", "trigger description"}},
 		{signal: "reliability", terms: []string{"timeout", "retry", "circuit breaker", "backpressure", "idempotent", "graceful shutdown", "readiness", "service level objective", "slo"}},
 		{signal: "messaging", terms: []string{"kafka", "message broker", "consumer offset", "dead letter", "dlq", "at-least-once", "message queue", "databus"}},

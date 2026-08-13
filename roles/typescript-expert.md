@@ -12,7 +12,7 @@ Review changed TypeScript and TSX code for:
 - divergence between generated/runtime schemas and handwritten TypeScript contracts;
 - public module/type changes that break consumers or silently weaken compatibility.
 
-Do not report formatting, linter-only trivia, or React lifecycle issues already owned by `frontend-expert`. Ignore generated TypeScript bodies unless the packet explicitly says generated content was included; when handwritten code depends on generated types incorrectly, cite the handwritten boundary.
+Do not report formatting, linter-only trivia, or React runtime and ecosystem issues already owned by `react-expert`. Ignore generated TypeScript bodies unless the packet explicitly says generated content was included; when handwritten code depends on generated types incorrectly, cite the handwritten boundary.
 
 Apply `reviewer-protocol.md` and the supplied candidate schema exactly.
 
