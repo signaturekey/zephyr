@@ -8,9 +8,11 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/alecthomas/kong"
+	"github.com/signaturekey/zephyr/internal/codexevents"
 	"github.com/signaturekey/zephyr/internal/harnessinstall"
 	"github.com/signaturekey/zephyr/internal/run"
 	"github.com/signaturekey/zephyr/internal/schema"
@@ -34,12 +36,39 @@ type CLI struct {
 	FallbackRouting    FallbackRoutingCmd    `cmd:"" name:"fallback-routing" help:"Завершить routing консервативным deterministic fallback."`
 	ValidateCandidates ValidateCandidatesCmd `cmd:"" name:"validate-candidates" help:"Проверить JSON одного изолированного ревьюера и выполнить precheck."`
 	ValidateVerdicts   ValidateVerdictsCmd   `cmd:"" name:"validate-verdicts" help:"Проверить JSON evidence-gate относительно точного набора кандидатов."`
+	RecoverCodexOutput RecoverCodexOutputCmd `cmd:"" name:"recover-codex-output" hidden:""`
 	MarkFailed         MarkFailedCmd         `cmd:"" name:"mark-failed" help:"Зафиксировать сбой ревьюера или evidence-gate, не теряя остальные результаты."`
 	Aggregate          AggregateCmd          `cmd:"" help:"Применить вердикты, устранить дубли и создать review.json."`
 	Render             RenderCmd             `cmd:"" help:"Сформировать review.md из проверенного review.json."`
 	Inspect            InspectCmd            `cmd:"" help:"Показать состояние запуска, счётчики, ограничения и пути к артефактам."`
 	Harness            HarnessCmd            `cmd:"" help:"Установить встроенные skills и agents Zephyr в локальный harness."`
 	Version            VersionCmd            `cmd:"" help:"Вывести версию сборки Zephyr."`
+}
+
+type RecoverCodexOutputCmd struct {
+	Kind   string `required:"" enum:"reviewer,routing,evidence" help:"Тип изолированного процесса."`
+	Input  string `required:"" type:"path" help:"JSONL event stream Codex CLI."`
+	Output string `required:"" type:"path" help:"Новый файл восстановленного structured output."`
+}
+
+func (command *RecoverCodexOutputCmd) Run(app *runtime) error {
+	if !filepath.IsAbs(command.Output) {
+		return errors.New("--output must be absolute")
+	}
+	if info, err := os.Lstat(command.Output); err == nil {
+		return fmt.Errorf("output %q already exists with mode %s", command.Output, info.Mode())
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect output %q: %w", command.Output, err)
+	}
+	data, err := readInput(app.stdin, command.Input, 64<<20)
+	if err != nil {
+		return err
+	}
+	output, err := codexevents.Recover(data, codexevents.Kind(command.Kind))
+	if err != nil {
+		return err
+	}
+	return codexevents.WriteRecovered(app.ctx, command.Output, output)
 }
 
 type runtime struct {

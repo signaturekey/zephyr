@@ -2,11 +2,45 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/signaturekey/zephyr/internal/schema"
 )
+
+func TestRecoverCodexOutputCmdWritesValidatedAgentMessage(t *testing.T) {
+	directory := t.TempDir()
+	eventsPath := filepath.Join(directory, "events.jsonl")
+	outputPath := filepath.Join(directory, "last-message.json")
+	message := `{"version":1,"run_id":"run-1","role":"architect-reviewer","findings":[]}`
+	events := `{"type":"item.completed","item":{"type":"agent_message","text":"{\"version\":1,\"run_id\":\"run-1\",\"role\":\"architect-reviewer\",\"findings\":[]}"}}` + "\n" +
+		`{"type":"turn.completed"}` + "\n"
+	if err := os.WriteFile(eventsPath, []byte(events), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	command := RecoverCodexOutputCmd{Kind: "reviewer", Input: eventsPath, Output: outputPath}
+	if err := command.Run(&runtime{ctx: context.Background()}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	got, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != message+"\n" {
+		t.Fatalf("output = %q, want %q", got, message+"\n")
+	}
+	info, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("output mode = %o, want 600", info.Mode().Perm())
+	}
+}
 
 func TestVersionCmdIncludesBuildAndProtocolMetadata(t *testing.T) {
 	oldVersion, oldCommit, oldDirty := version, commit, dirty
