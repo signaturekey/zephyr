@@ -97,12 +97,12 @@ Zephyr compares the current branch with a base reference and may include current
 
 ### 3.5 Modes
 
-~~~text
+```text
 plan            review a specification without requiring a diff
 implementation  review code without requiring a specification
 alignment       compare implementation, specification, and requirements
 auto            resolve the mode from available inputs
-~~~
+```
 
 Auto mode resolves deterministically:
 
@@ -115,7 +115,7 @@ Auto mode resolves deterministically:
 
 ### 4.1 System boundary
 
-~~~text
+```text
 User
   |
   v
@@ -138,7 +138,7 @@ Deterministic Go core
   |-- verdict integrity and deduplication
   |-- report rendering
   '-- safe structured trace
-~~~
+```
 
 The separation is mandatory. The Go process does not own Codex agent threads and must not acquire an LLM API dependency to do so. The harness owns model execution and MCP access; the core owns reproducible policy and data transformations.
 
@@ -180,6 +180,8 @@ A harness package owns:
 - Double-star path matching: github.com/bmatcuk/doublestar/v4.
 - Cross-process locking: github.com/gofrs/flock.
 - JSON, embedding, templates, process execution, and tests: Go standard library where practical.
+- Test assertions: github.com/stretchr/testify/assert and github.com/stretchr/testify/require.
+- Structural test comparisons: github.com/google/go-cmp/cmp; use comparison options only when an existing contract explicitly requires them.
 - Git backend: the installed system git executable through os/exec.CommandContext.
 
 Do not add Viper, an ORM, a database, an HTTP server, a Node.js runtime, go-git, or an LLM SDK without an explicit architecture change.
@@ -188,7 +190,7 @@ Define CLI commands as typed structs with small Run methods. Kong is only an ada
 
 ## 5. Repository organization
 
-~~~text
+```text
 cmd/zephyr/                 CLI entry point and wiring
 internal/run/               run lifecycle, IDs, manifests, and stale detection
 internal/gitcontext/        read-only system Git adapter and snapshot collection
@@ -208,7 +210,7 @@ harnesses/codex/            Codex skill, dispatcher, and agent definitions
 configs/                    embedded default configuration
 fixtures/                   deterministic golden fixtures
 evals/                      forward-evaluation assets
-~~~
+```
 
 Keep packages capability-oriented and small. cmd performs composition and contains no review policy. Keep filesystem, clocks, Git, and process execution behind narrow boundaries. Pure routing, validation, deduplication, and rendering must be testable without spawning processes.
 
@@ -453,23 +455,23 @@ Current defaults allow all 16 reviewer roles in both standard and thorough profi
 
 Default path and signal routing includes:
 
-| Input signal | Added role |
-|---|---|
-| Go files | golang-expert |
-| Python files or Python project metadata | python-expert |
-| TypeScript or TSX | typescript-expert |
-| TSX, JSX, CSS, SCSS, or Less | frontend-expert |
-| SKILL.md, skill folders, or templates | skill-authoring-expert |
-| Retry, timeout, idempotency, backpressure, or resilience paths | reliability-expert |
-| Kafka, queues, streams, consumers, producers, or Databus | messaging-expert |
-| Docker, Kubernetes, Helm, deployment, or CI/CD configuration | infrastructure-expert |
-| Redis, caches, Elasticsearch/OpenSearch, search indexes, or object storage | storage-expert |
-| SQL or migrations | sql-expert |
-| Brief, OpenAPI, Proto, generated contract boundary | contract-reviewer |
-| Authentication, permissions, tokens, PII | security-auditor |
-| Multiple services, new module, architecture change | architect-reviewer |
-| Observable behavior or tests | qa-expert |
-| Large complexity delta or duplication | code-simplifier |
+| Input signal                                                               | Added role             |
+| -------------------------------------------------------------------------- | ---------------------- |
+| Go files                                                                   | golang-expert          |
+| Python files or Python project metadata                                    | python-expert          |
+| TypeScript or TSX                                                          | typescript-expert      |
+| TSX, JSX, CSS, SCSS, or Less                                               | frontend-expert        |
+| SKILL.md, skill folders, or templates                                      | skill-authoring-expert |
+| Retry, timeout, idempotency, backpressure, or resilience paths             | reliability-expert     |
+| Kafka, queues, streams, consumers, producers, or Databus                   | messaging-expert       |
+| Docker, Kubernetes, Helm, deployment, or CI/CD configuration               | infrastructure-expert  |
+| Redis, caches, Elasticsearch/OpenSearch, search indexes, or object storage | storage-expert         |
+| SQL or migrations                                                          | sql-expert             |
+| Brief, OpenAPI, Proto, generated contract boundary                         | contract-reviewer      |
+| Authentication, permissions, tokens, PII                                   | security-auditor       |
+| Multiple services, new module, architecture change                         | architect-reviewer     |
+| Observable behavior or tests                                               | qa-expert              |
+| Large complexity delta or duplication                                      | code-simplifier        |
 
 When a project lowers the profile limit, preserve required and explicitly included roles first, then use this priority:
 
@@ -515,13 +517,13 @@ Code and artifact locations are mutually exclusive. The schema is authoritative 
 
 Each input candidate receives exactly one of:
 
-~~~text
+```text
 accepted
 rejected
 downgraded
 duplicate
 needs-human
-~~~
+```
 
 A verdict contains the candidate ID, supported final severity where applicable, a stable reason code, a concise reason, and duplicate_of only for duplicate verdicts.
 
@@ -581,13 +583,13 @@ Never execute Git write commands, including add, commit, checkout, switch, reset
 
 Supported change sources:
 
-~~~text
+```text
 working-tree  staged and unstaged changes relative to HEAD
 staged        index only relative to HEAD
 branch        merge-base(base, HEAD) through current worktree
 commit-range  explicit commit range
 plan-only     no Git diff
-~~~
+```
 
 Default local review uses working-tree.
 
@@ -641,12 +643,11 @@ Parallel dispatch is preferred. Sequential batching is valid only when it preser
 
 The dispatcher streams Codex JSON events to a deterministic recovery process in a separate bounded process session. If a successful Codex process emits one complete structured response but fails to materialize `--output-last-message`, recovery may publish that exact response only after requiring exactly one agent message, exactly one completed turn, no later error event, and validation against the authoritative output schema and semantic rules. Recovery may not alter the response, substitute a model, weaken validation, or accept output from a failed Codex process.
 
-
 ## 13. CLI and run artifacts
 
 The composable CLI surface is:
 
-~~~text
+```text
 zephyr init
 zephyr collect
 zephyr context add
@@ -662,13 +663,13 @@ zephyr aggregate
 zephyr render
 zephyr inspect
 zephyr version
-~~~
+```
 
 Do not invent flags. Inspect executable help when documentation and implementation disagree.
 
 A run directory contains, as applicable:
 
-~~~text
+```text
 <run-dir>/
 |-- manifest.json
 |-- git/
@@ -696,7 +697,7 @@ A run directory contains, as applicable:
 |-- review.json
 |-- review.md
 '-- trace.json
-~~~
+```
 
 All run artifacts stay outside the reviewed worktree. Sensitive artifacts use restrictive permissions and atomic writes.
 
@@ -728,20 +729,20 @@ Do not persist chain-of-thought, raw secrets, unrestricted process stderr, or fu
 
 ### 14.3 Failure matrix
 
-| Failure | Required behavior |
-|---|---|
-| Missing diff in implementation mode | fail with a clear input error |
-| Optional Jira or Confluence unavailable | continue with a coverage warning |
-| Required business source unavailable | fail or mark alignment incomplete |
-| One reviewer fails | preserve other valid roles and report partial coverage |
-| Invalid reviewer JSON | one format retry, then mark the role failed |
-| Transient or unknown Codex process failure | one staggered byte-identical retry, then safe failure |
-| Codex authentication or configuration failure | fail fast without retry or raw stderr disclosure |
-| Evidence gate fails | mark the run incomplete and confirm no candidates |
-| HEAD or worktree drifts | mark the original snapshot stale |
-| Context limit is exceeded | deterministic truncation plus explicit manifest entry |
-| Configuration is invalid | stop before reviewer execution |
-| Exact isolated payload cannot be delivered | fail affected roles; never truncate silently or grant live access |
+| Failure                                       | Required behavior                                                 |
+| --------------------------------------------- | ----------------------------------------------------------------- |
+| Missing diff in implementation mode           | fail with a clear input error                                     |
+| Optional Jira or Confluence unavailable       | continue with a coverage warning                                  |
+| Required business source unavailable          | fail or mark alignment incomplete                                 |
+| One reviewer fails                            | preserve other valid roles and report partial coverage            |
+| Invalid reviewer JSON                         | one format retry, then mark the role failed                       |
+| Transient or unknown Codex process failure    | one staggered byte-identical retry, then safe failure             |
+| Codex authentication or configuration failure | fail fast without retry or raw stderr disclosure                  |
+| Evidence gate fails                           | mark the run incomplete and confirm no candidates                 |
+| HEAD or worktree drifts                       | mark the original snapshot stale                                  |
+| Context limit is exceeded                     | deterministic truncation plus explicit manifest entry             |
+| Configuration is invalid                      | stop before reviewer execution                                    |
+| Exact isolated payload cannot be delivered    | fail affected roles; never truncate silently or grant live access |
 
 Wrap errors with operation and target context while preserving machine-checkable causes where useful. Do not panic for invalid input, unavailable tools, malformed agent output, or configuration failures.
 
@@ -824,12 +825,12 @@ Unit and static harness tests do not prove live MCP or agent behavior. State tha
 
 Before declaring an implementation complete, run as appropriate:
 
-~~~text
+```text
 gofmt
 go test ./...
 go vet ./...
 ./harnesses/validate.sh
-~~~
+```
 
 Use make check for the standard repository check and go test -race ./... -count=1 for concurrency-sensitive changes. Use go mod verify when dependencies or module integrity are relevant.
 
@@ -864,7 +865,7 @@ The implementation sequence is:
 
 1. Protocol, schemas, run model, and deterministic Go core.
 2. Fully working Codex harness.
-4. Pilot evaluation and calibration.
+3. Pilot evaluation and calibration.
 
 The current protocol includes Go, TypeScript/frontend, reliability, messaging, infrastructure, non-relational storage, SQL, contract, security, QA, architecture, simplification, and Markdown-skill review roles. Extend it by adding a narrow role, its semantic scope and protected routing signals, schemas or category constraints, harness assets, and tests; do not add language-specific review policy to the core.
 
