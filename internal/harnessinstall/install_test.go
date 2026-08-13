@@ -20,6 +20,7 @@ func TestInstallCodex(t *testing.T) {
 	require.NotEmpty(t, result.Files, "installation changed no files")
 	for _, path := range []string{
 		filepath.Join(root, "codex-skills", "zephyr", "SKILL.md"),
+		filepath.Join(root, "codex-skills", "zephyr", "scripts", "acquire-pr.sh"),
 		filepath.Join(root, "codex-skills", "zephyr", "scripts", "dispatch.sh"),
 		filepath.Join(root, "codex-skills", "zephyr", "agents", "openai.yaml"),
 		filepath.Join(root, "codex-agents", "zephyr-code-reviewer.toml"),

@@ -99,6 +99,7 @@ def validate_asset_manifest() -> None:
     manifest_path = ROOT / "harnesses/assets.sha256"
     expected = {
         "harnesses/codex/SKILL.md",
+        "harnesses/codex/acquire-pr.sh",
         "harnesses/codex/dispatch.sh",
         "harnesses/codex/discovery/SKILL.md",
         "harnesses/codex/discovery/agents/openai.yaml",
@@ -190,6 +191,7 @@ def validate_skills() -> None:
 
     codex_skill = ROOT / "harnesses/codex/SKILL.md"
     codex_skill_text = codex_skill.read_text(encoding="utf-8")
+    normalized_codex_skill = " ".join(codex_skill_text.split())
     for phrase in (
         "before `zephyr route`",
         "--source codex-compatibility",
@@ -197,7 +199,7 @@ def validate_skills() -> None:
         "unparseable Codex feature output allowed",
         "portable Codex isolation profile selected",
     ):
-        if phrase not in codex_skill_text:
+        if phrase not in normalized_codex_skill:
             fail(f"{codex_skill}: compatibility choreography is missing {phrase!r}")
     probe_index = codex_skill_text.index("<dispatch-script> probe")
     route_index = codex_skill_text.index("zephyr route --run")
@@ -225,8 +227,19 @@ def validate_skills() -> None:
             if phrase in text:
                 fail(f"{path}: forbidden or contradictory choreography {phrase!r}")
 
+    for phrase in (
+        "/projects/<project>/repos/<repository>/pull-requests/<id>/overview",
+        "<acquire-pr-script> acquire",
+        "collected base and target SHAs",
+        "complete changed-path list",
+        "re-read the PR metadata",
+        "Do not publish PR comments",
+    ):
+        if phrase not in normalized_codex_skill:
+            fail(f"{codex_skill}: PR URL choreography is missing {phrase!r}")
+
     metadata = (ROOT / ".agents/skills/zephyr/agents/openai.yaml").read_text(encoding="utf-8")
-    for phrase in ("display_name:", "short_description:", "default_prompt:", "$zephyr"):
+    for phrase in ('display_name: "Zephyr"', "short_description:", "default_prompt:", "$zephyr"):
         if phrase not in metadata:
             fail(f"Codex skill metadata is missing {phrase!r}")
 

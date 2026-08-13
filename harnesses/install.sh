@@ -166,6 +166,7 @@ install_file() {
 
 verify_asset_manifest
 require_source "$repo_root/harnesses/codex/SKILL.md"
+require_source "$repo_root/harnesses/codex/acquire-pr.sh"
 require_source "$repo_root/harnesses/codex/dispatch.sh"
 require_source "$repo_root/harnesses/codex/discovery/agents/openai.yaml"
 for source_path in "$repo_root"/roles/*.md "$repo_root"/schemas/*.json; do
@@ -177,6 +178,7 @@ require_absolute "$codex_agents_dir"
 codex_skill_root="$codex_skills_dir/zephyr"
 
   check_destination "$repo_root/harnesses/codex/SKILL.md" "$codex_skill_root/SKILL.md"
+  check_destination "$repo_root/harnesses/codex/acquire-pr.sh" "$codex_skill_root/scripts/acquire-pr.sh"
   check_destination "$repo_root/harnesses/codex/dispatch.sh" "$codex_skill_root/scripts/dispatch.sh"
   check_destination "$repo_root/harnesses/codex/discovery/agents/openai.yaml" "$codex_skill_root/agents/openai.yaml"
   check_destination "$repo_root/harnesses/assets.sha256" "$codex_skill_root/references/assets.sha256"
@@ -194,6 +196,8 @@ codex_skill_root="$codex_skills_dir/zephyr"
 
 sh "$script_dir/sync-discovery.sh" --check
   install_file "$repo_root/harnesses/codex/SKILL.md" "$codex_skill_root/SKILL.md"
+  install_file "$repo_root/harnesses/codex/acquire-pr.sh" "$codex_skill_root/scripts/acquire-pr.sh"
+  chmod 700 "$codex_skill_root/scripts/acquire-pr.sh"
   install_file "$repo_root/harnesses/codex/dispatch.sh" "$codex_skill_root/scripts/dispatch.sh"
   chmod 700 "$codex_skill_root/scripts/dispatch.sh"
   install_file "$repo_root/harnesses/codex/discovery/agents/openai.yaml" "$codex_skill_root/agents/openai.yaml"

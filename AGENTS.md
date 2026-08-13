@@ -157,11 +157,14 @@ The core must remain deterministic and must not call an LLM, MCP server, or prov
 - Markdown and JSON report generation;
 - redacted trace persistence.
 
+The core never acquires a remote repository and never performs Git mutations.
+
 ### 4.3 Harness responsibilities
 
 A harness package owns:
 
 - activation from a user request;
+- read-only PR resolution and disposable repository acquisition for an explicit PR URL;
 - discovery and mandatory per-run declaration of Jira, Confluence, and Bitbucket capabilities;
 - read-only business-context collection and provenance;
 - isolated semantic-router dispatch;
@@ -170,6 +173,8 @@ A harness package owns:
 - retry and failure classification at the process boundary;
 - passing artifacts between agents and the core;
 - presenting the result and its limitations.
+
+For PR acquisition only, the harness may create Git state inside a new private disposable directory outside every user checkout and pre-existing reviewed repository. It must pin the repository to frozen base and head commit SHAs, expose it to the core only for collection, and remove only the acquisition directory it created.
 
 ### 4.4 Technical stack
 
@@ -232,6 +237,7 @@ The harness verifies that:
 - Jira, Confluence, and Bitbucket each have an explicit `available`, `unavailable`, or `not-required` status before routing;
 - MCP is requested only for referenced business context;
 - the request does not require a prohibited write action;
+- a PR URL has immutable base and head SHAs and a safe disposable acquisition directory before Git collection;
 - configuration and bundled asset integrity are valid.
 
 ### 6.2 Run creation
@@ -585,7 +591,9 @@ Before worktree-aware status or diff operations, inspect effective Git configura
 
 Do not recurse into dirty submodule worktrees. Preserve gitlink SHA changes without invoking submodule-local filters or hooks.
 
-Never execute Git write commands, including add, commit, checkout, switch, reset, clean, stash, merge, rebase, push, or branch and tag mutations.
+Never execute Git write commands in a user checkout or a pre-existing reviewed repository, including add, commit, checkout, switch, reset, clean, stash, merge, rebase, push, or branch and tag mutations.
+
+The only exception is PR acquisition owned by the harness. A trusted acquisition helper may initialize, fetch, and create a detached checkout only inside a new mode-0700 disposable directory that it created outside every user checkout. The helper must verify frozen base and head SHAs, must not initialize submodules or persist credentials, and may remove only its validated acquisition root. The core Git adapter remains read-only.
 
 Supported change sources:
 

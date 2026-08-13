@@ -263,6 +263,7 @@ func codexAssets(options Options) ([]asset, error) {
 	}
 	result := []asset{
 		mapping("harnesses/codex/SKILL.md", filepath.Join(skillRoot, "SKILL.md"), 0o600),
+		mapping("harnesses/codex/acquire-pr.sh", filepath.Join(skillRoot, "scripts", "acquire-pr.sh"), 0o700),
 		mapping("harnesses/codex/dispatch.sh", filepath.Join(skillRoot, "scripts", "dispatch.sh"), 0o700),
 		mapping("harnesses/codex/discovery/agents/openai.yaml", filepath.Join(skillRoot, "agents", "openai.yaml"), 0o600),
 		mapping("harnesses/assets.sha256", filepath.Join(skillRoot, "references", "assets.sha256"), 0o600),
