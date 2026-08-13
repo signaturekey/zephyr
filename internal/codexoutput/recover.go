@@ -1,4 +1,4 @@
-package codexevents
+package codexoutput
 
 import (
 	"bufio"
@@ -79,7 +79,7 @@ func Recover(data []byte, kind Kind) ([]byte, error) {
 	if errorAfterMessage {
 		return nil, errors.New("error event after agent message")
 	}
-	output := append([]byte(message), '\n')
+	output := []byte(message)
 	if err := validate(output, kind); err != nil {
 		return nil, err
 	}

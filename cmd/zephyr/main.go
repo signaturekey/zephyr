@@ -12,7 +12,7 @@ import (
 	"syscall"
 
 	"github.com/alecthomas/kong"
-	"github.com/signaturekey/zephyr/internal/codexevents"
+	"github.com/signaturekey/zephyr/internal/codexoutput"
 	"github.com/signaturekey/zephyr/internal/harnessinstall"
 	"github.com/signaturekey/zephyr/internal/run"
 	"github.com/signaturekey/zephyr/internal/schema"
@@ -64,11 +64,11 @@ func (command *RecoverCodexOutputCmd) Run(app *runtime) error {
 	if err != nil {
 		return err
 	}
-	output, err := codexevents.Recover(data, codexevents.Kind(command.Kind))
+	output, err := codexoutput.Recover(data, codexoutput.Kind(command.Kind))
 	if err != nil {
 		return err
 	}
-	return codexevents.WriteRecovered(app.ctx, command.Output, output)
+	return codexoutput.WriteRecovered(app.ctx, command.Output, output)
 }
 
 type runtime struct {

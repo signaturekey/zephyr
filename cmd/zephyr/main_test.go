@@ -30,8 +30,8 @@ func TestRecoverCodexOutputCmdWritesValidatedAgentMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != message+"\n" {
-		t.Fatalf("output = %q, want %q", got, message+"\n")
+	if string(got) != message {
+		t.Fatalf("output = %q, want %q", got, message)
 	}
 	info, err := os.Stat(outputPath)
 	if err != nil {

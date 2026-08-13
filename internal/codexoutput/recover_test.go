@@ -1,4 +1,4 @@
-package codexevents
+package codexoutput
 
 import (
 	"strings"
@@ -19,8 +19,8 @@ func TestRecoverStructuredOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Recover() error = %v", err)
 	}
-	if string(got) != want+"\n" {
-		t.Fatalf("Recover() = %q, want %q", got, want+"\n")
+	if string(got) != want {
+		t.Fatalf("Recover() = %q, want %q", got, want)
 	}
 }
 
@@ -41,8 +41,8 @@ func TestRecoverStructuredOutputKinds(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Recover() error = %v", err)
 			}
-			if string(got) != test.message+"\n" {
-				t.Fatalf("Recover() = %q, want %q", got, test.message+"\n")
+			if string(got) != test.message {
+				t.Fatalf("Recover() = %q, want %q", got, test.message)
 			}
 		})
 	}
