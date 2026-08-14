@@ -49,12 +49,13 @@ requires a currently callable read-only Bitbucket MCP capability; do not use a
 public web request, raw provider credentials, or the user's existing checkout.
 
 Through the read-only capability, freeze the canonical URL, PR ID, state,
-title, description, source and target ref names, immutable head and base commit
-SHAs, and whether the returned changed-path list is complete or truncated.
-Freeze relevant comments and explicit Jira or Confluence references when those
-read operations are available. Select `alignment` only when requirements are
-actually frozen; otherwise select `implementation` and record unavailable
-referenced requirements as limitations.
+title, description, source and target ref names, provider version when exposed,
+provider-pinned head and base commit SHAs when both are returned, and whether
+the returned changed-path list is complete or truncated. Freeze relevant
+comments and explicit Jira or Confluence references when those read operations
+are available. Select `alignment` only when requirements are actually frozen;
+otherwise select `implementation` and record unavailable referenced requirements
+as limitations.
 
 Use the trusted packaged helper next to `dispatch.sh`. Create a private output
 directory outside every user checkout, then run:
@@ -62,25 +63,32 @@ directory outside every user checkout, then run:
 ```text
 <acquire-pr-script> acquire \
   --repository-url <read-only-clone-url> \
-  --base-ref <frozen-base-ref> --base-sha <frozen-base-sha> \
-  --head-ref <frozen-head-ref> --head-sha <frozen-head-sha> \
+  --base-ref <frozen-base-ref> --head-ref <frozen-head-ref> \
+  [--base-sha <frozen-base-sha> --head-sha <frozen-head-sha>] \
   --output <absolute-private-path>/acquisition.json
 ```
 
-Read the regular non-symlink metadata file back and require its repository,
-base SHA, and head SHA to match the frozen values. Initialize the run against
-that disposable repository with `--source commit-range --range
-<base-sha>..<head-sha>`. After `collect`, require the collected base and target SHAs
-to equal the frozen PR SHAs. When Bitbucket supplied a complete changed-path list,
-require exact set equality with the collected changed paths;
-a mismatch is a hard failure. An unavailable or explicitly truncated list is a
-coverage limitation, not a claimed comparison.
+Pass the optional SHA pair only when MCP returned both values; when either SHA
+is absent, omit both and use best-effort acquisition. Read the regular
+non-symlink metadata file back. When `pinned: true`, require its base and head
+SHA to match the frozen provider values. When `pinned: false`, do not stop:
+label the run `best-effort-pr-snapshot` and record this immutable coverage limit:
+`MCP did not provide provider-pinned SHA; snapshot was obtained from refs`.
+The helper has already resolved those refs once into the metadata base/head SHA.
+Initialize the run against that disposable repository with `--source
+commit-range --range <base-sha>..<head-sha>`. After `collect`, require the
+collected base and target SHAs to equal the acquisition metadata. When Bitbucket
+supplied a complete changed-path list, require exact set equality with the
+collected changed paths; a mismatch is a hard failure. An unavailable or
+explicitly truncated list is a coverage limitation, not a claimed comparison.
 
 After successful collection, invoke `acquire-pr.sh cleanup --metadata
 <absolute-private-path>/acquisition.json`. The helper may remove only the
 private acquisition root it created. Before final handoff, re-read the PR
-metadata through the same read-only capability. If its head SHA changed, mark
-the report stale and keep it bound to the original snapshot. Do not publish PR
+metadata through the same read-only capability. If the source ref, target ref,
+PR state, or provider version changed, mark the report stale and keep it bound
+to the original snapshot. If provider version is unavailable in a best-effort
+run, record that as an additional limitation instead. Do not publish PR
 comments, approvals, declines, or status changes; return the review only in
 chat.
 

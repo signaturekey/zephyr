@@ -11,7 +11,7 @@ case "$git_timeout" in *[!0-9]*|'') fail_early=yes ;; *) fail_early=no ;; esac
 }
 
 usage() {
-  echo "usage: acquire-pr.sh acquire --repository-url URL --base-ref REF --base-sha SHA --head-ref REF --head-sha SHA --output FILE" >&2
+  echo "usage: acquire-pr.sh acquire --repository-url URL --base-ref REF --head-ref REF [--base-sha SHA --head-sha SHA] --output FILE" >&2
   echo "       acquire-pr.sh cleanup --metadata FILE" >&2
 }
 
@@ -108,10 +108,15 @@ acquire() {
   done
   [ -n "$repository_url" ] || fail "--repository-url is required"
   case "$repository_url" in -*|http://*@*|https://*@*) fail "repository URL is unsafe" ;; esac
-  validate_sha "$base_sha" "base SHA"
-  validate_sha "$head_sha" "head SHA"
   validate_ref "$base_ref" "base ref"
   validate_ref "$head_ref" "head ref"
+  if [ -n "$base_sha" ] && [ -n "$head_sha" ]; then
+    validate_sha "$base_sha" "base SHA"
+    validate_sha "$head_sha" "head SHA"
+    pinned=true
+  else
+    pinned=false
+  fi
   require_absolute "$output" "output"
   [ ! -e "$output" ] && [ ! -L "$output" ] || fail "refusing to overwrite output"
   requested_parent=$(dirname -- "$output")
@@ -139,18 +144,20 @@ acquire() {
     "+$base_ref:refs/zephyr/base" "+$head_ref:refs/zephyr/head"
   resolved_base=$(run_git -C "$repository" rev-parse --verify 'refs/zephyr/base^{commit}')
   resolved_head=$(run_git -C "$repository" rev-parse --verify 'refs/zephyr/head^{commit}')
-  expected_base=$(printf '%s' "$base_sha" | tr 'A-F' 'a-f')
-  expected_head=$(printf '%s' "$head_sha" | tr 'A-F' 'a-f')
-  [ "$resolved_base" = "$expected_base" ] || fail "fetched base ref does not match frozen SHA"
-  [ "$resolved_head" = "$expected_head" ] || fail "fetched head ref does not match frozen SHA"
+  if [ "$pinned" = true ]; then
+    expected_base=$(printf '%s' "$base_sha" | tr 'A-F' 'a-f')
+    expected_head=$(printf '%s' "$head_sha" | tr 'A-F' 'a-f')
+    [ "$resolved_base" = "$expected_base" ] || fail "fetched base ref does not match frozen SHA"
+    [ "$resolved_head" = "$expected_head" ] || fail "fetched head ref does not match frozen SHA"
+  fi
   run_git -C "$repository" -c advice.detachedHead=false checkout -q --detach "$resolved_head"
 
   metadata_temp=$(mktemp "$output_parent/.zephyr-pr-metadata.XXXXXX")
-  python3 - "$metadata_temp" "$acquisition_root" "$repository" "$resolved_base" "$resolved_head" <<'PY'
+  python3 - "$metadata_temp" "$acquisition_root" "$repository" "$resolved_base" "$resolved_head" "$pinned" <<'PY'
 import json, os, sys
-path, root, repository, base_sha, head_sha = sys.argv[1:]
+path, root, repository, base_sha, head_sha, pinned = sys.argv[1:]
 with open(path, "w", encoding="utf-8") as stream:
-    json.dump({"version": 1, "acquisition_root": root, "repository": repository, "base_sha": base_sha, "head_sha": head_sha}, stream, sort_keys=True)
+    json.dump({"version": 2, "acquisition_root": root, "repository": repository, "base_sha": base_sha, "head_sha": head_sha, "pinned": pinned == "true"}, stream, sort_keys=True)
     stream.write("\n")
 os.chmod(path, 0o600)
 PY
@@ -172,7 +179,10 @@ cleanup() {
   values=$(python3 - "$metadata" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as stream: data = json.load(stream)
-if set(data) != {"version", "acquisition_root", "repository", "base_sha", "head_sha"} or data["version"] != 1: raise SystemExit("invalid acquisition metadata")
+if data["version"] == 2:
+    if set(data) != {"version", "acquisition_root", "repository", "base_sha", "head_sha", "pinned"} or not isinstance(data["pinned"], bool): raise SystemExit("invalid acquisition metadata")
+elif data["version"] != 1 or set(data) != {"version", "acquisition_root", "repository", "base_sha", "head_sha"}:
+    raise SystemExit("invalid acquisition metadata")
 for key in ("acquisition_root", "repository", "base_sha", "head_sha"):
     if not isinstance(data[key], str) or "\n" in data[key]: raise SystemExit("invalid acquisition metadata")
 print(data["acquisition_root"])

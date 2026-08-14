@@ -199,14 +199,16 @@ $zephyr Проверь текущую ветку относительно main.
 
 Codex harness может принять каноническую ссылку на Bitbucket/Stash PR, получить
 его metadata через read-only MCP и подготовить временный приватный checkout вне
-пользовательских репозиториев. Snapshot фиксируется по точным base/head SHA и
-проверяется как `commit-range`; имена веток не используются как immutable
-identity.
+пользовательских репозиториев. Если MCP отдал оба provider-pinned base/head SHA,
+snapshot проверяется по ним как `commit-range`. Если полной пары SHA нет, helper
+одним fetch фиксирует source/target refs в локальные SHA; запуск помечается
+`best-effort-pr-snapshot` с ограничением, что snapshot получен по refs.
 
 Результат возвращается только в чат. Zephyr не публикует PR comments и не
-выставляет approve/decline. Перед handoff harness повторно проверяет head SHA:
-если PR обновился, результат помечается stale и остаётся привязанным к исходному
-snapshot.
+выставляет approve/decline. Перед handoff harness повторно читает metadata: если
+изменились source/target ref, status или provider version, результат помечается
+stale и остаётся привязанным к исходному snapshot. Отсутствие provider version
+фиксируется как coverage limit, а не блокирует обычное ревью.
 
 <a id="modes"></a>
 ## Режимы и Git scope
@@ -492,10 +494,11 @@ allowlist. Перед worktree-aware операциями Zephyr проверя�
 что даже `git status` или `git diff` могут запустить внешний process.
 
 Для явной PR-ссылки trusted harness helper может создать Git state только в
-новом mode-0700 disposable-каталоге вне пользовательских checkout. Он фиксирует
-точные base/head SHA, не инициализирует submodules, не сохраняет credentials и
-удаляет только созданный им acquisition root. Go core и его Git adapter остаются
-read-only.
+новом mode-0700 disposable-каталоге вне пользовательских checkout. Он проверяет
+точные provider-pinned base/head SHA, когда MCP их дал; иначе одним fetch
+фиксирует refs в SHA и явно возвращает `pinned: false`. Он не инициализирует
+submodules, не сохраняет credentials и удаляет только созданный им acquisition
+root. Go core и его Git adapter остаются read-only.
 
 Reviewer получает только role prompt, immutable packet и output schema. Ему
 недоступны live filesystem, Git, shell, MCP, web, memory и другие reviewers.

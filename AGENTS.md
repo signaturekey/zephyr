@@ -174,7 +174,7 @@ A harness package owns:
 - passing artifacts between agents and the core;
 - presenting the result and its limitations.
 
-For PR acquisition only, the harness may create Git state inside a new private disposable directory outside every user checkout and pre-existing reviewed repository. It must pin the repository to frozen base and head commit SHAs, expose it to the core only for collection, and remove only the acquisition directory it created.
+For PR acquisition only, the harness may create Git state inside a new private disposable directory outside every user checkout and pre-existing reviewed repository. When Bitbucket provides both provider-pinned base and head commit SHAs, it must verify them. When either SHA is absent, it may resolve the frozen source and target refs in one fetch, label the run `best-effort-pr-snapshot`, disclose that limitation, expose the resolved commit range to the core only for collection, and remove only the acquisition directory it created.
 
 ### 4.4 Technical stack
 
@@ -237,7 +237,7 @@ The harness verifies that:
 - Jira, Confluence, and Bitbucket each have an explicit `available`, `unavailable`, or `not-required` status before routing;
 - MCP is requested only for referenced business context;
 - the request does not require a prohibited write action;
-- a PR URL has immutable base and head SHAs and a safe disposable acquisition directory before Git collection;
+- a PR URL has provider-pinned base and head SHAs when available, or a one-fetch best-effort ref snapshot with an explicit limitation, plus a safe disposable acquisition directory before Git collection;
 - configuration and bundled asset integrity are valid.
 
 ### 6.2 Run creation
@@ -595,7 +595,7 @@ Do not recurse into dirty submodule worktrees. Preserve gitlink SHA changes with
 
 Never execute Git write commands in a user checkout or a pre-existing reviewed repository, including add, commit, checkout, switch, reset, clean, stash, merge, rebase, push, or branch and tag mutations.
 
-The only exception is PR acquisition owned by the harness. A trusted acquisition helper may initialize, fetch, and create a detached checkout only inside a new mode-0700 disposable directory that it created outside every user checkout. The helper must verify frozen base and head SHAs, must not initialize submodules or persist credentials, and may remove only its validated acquisition root. The core Git adapter remains read-only.
+The only exception is PR acquisition owned by the harness. A trusted acquisition helper may initialize, fetch, and create a detached checkout only inside a new mode-0700 disposable directory that it created outside every user checkout. The helper must verify provider-pinned base and head SHAs when both are available; otherwise it resolves source and target refs in one fetch and returns the exact acquired SHAs marked unpinned. It must not initialize submodules or persist credentials, and may remove only its validated acquisition root. The core Git adapter remains read-only.
 
 Supported change sources:
 

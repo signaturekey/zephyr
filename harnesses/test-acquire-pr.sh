@@ -55,10 +55,36 @@ output="$test_root/acquisition.json"
 repository=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["repository"])' "$output")
 recorded_base=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["base_sha"])' "$output")
 recorded_head=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["head_sha"])' "$output")
+recorded_pinned=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pinned"])' "$output")
 [ "$recorded_base" = "$base_sha" ] || fail "base SHA mismatch"
 [ "$recorded_head" = "$head_sha" ] || fail "head SHA mismatch"
+[ "$recorded_pinned" = "True" ] || fail "provider-pinned acquisition was not marked pinned"
 [ "$(git -C "$repository" rev-parse HEAD)" = "$head_sha" ] || fail "checkout is not pinned to head SHA"
 expect_failure git -C "$repository" symbolic-ref -q HEAD
+
+best_effort_output="$test_root/best-effort-acquisition.json"
+"$helper" acquire \
+  --repository-url "$origin_repo" \
+  --base-ref refs/heads/main \
+  --head-ref refs/heads/feature \
+  --output "$best_effort_output"
+
+best_effort_repository=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["repository"])' "$best_effort_output")
+best_effort_base=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["base_sha"])' "$best_effort_output")
+best_effort_head=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["head_sha"])' "$best_effort_output")
+best_effort_pinned=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pinned"])' "$best_effort_output")
+[ "$best_effort_base" = "$base_sha" ] || fail "best-effort base SHA mismatch"
+[ "$best_effort_head" = "$head_sha" ] || fail "best-effort head SHA mismatch"
+[ "$best_effort_pinned" = "False" ] || fail "best-effort acquisition was not marked unpinned"
+[ "$(git -C "$best_effort_repository" rev-parse HEAD)" = "$head_sha" ] || fail "best-effort checkout is not at fetched head SHA"
+expect_failure git -C "$best_effort_repository" symbolic-ref -q HEAD
+
+partial_output="$test_root/partial-sha.json"
+"$helper" acquire \
+  --repository-url "$origin_repo" --base-ref refs/heads/main --base-sha "$base_sha" \
+  --head-ref refs/heads/feature --output "$partial_output"
+partial_pinned=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pinned"])' "$partial_output")
+[ "$partial_pinned" = "False" ] || fail "partial SHA input was not treated as best-effort"
 
 expect_failure "$helper" acquire \
   --repository-url "$origin_repo" --base-ref refs/heads/main --base-sha invalid \
@@ -97,5 +123,12 @@ expect_failure "$helper" cleanup --metadata "$tampered"
 "$helper" cleanup --metadata "$output"
 [ ! -e "$repository" ] || fail "cleanup left repository"
 expect_failure "$helper" cleanup --metadata "$output"
+
+"$helper" cleanup --metadata "$best_effort_output"
+[ ! -e "$best_effort_repository" ] || fail "cleanup left best-effort repository"
+expect_failure "$helper" cleanup --metadata "$best_effort_output"
+
+"$helper" cleanup --metadata "$partial_output"
+expect_failure "$helper" cleanup --metadata "$partial_output"
 
 echo "acquire-pr tests passed"

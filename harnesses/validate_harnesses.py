@@ -249,6 +249,9 @@ def validate_skills() -> None:
         "collected base and target SHAs",
         "complete changed-path list",
         "re-read the PR metadata",
+        "best-effort-pr-snapshot",
+        "MCP did not provide provider-pinned SHA",
+        "source ref, target ref, PR state, or provider version",
         "Do not publish PR comments",
     ):
         if phrase not in normalized_codex_skill:
