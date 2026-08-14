@@ -49,7 +49,8 @@ uninstall-cli:
 	GO="$(GO)" sh harnesses/uninstall-cli.sh
 
 update:
-	$(MAKE) install
+	sh harnesses/update.sh --preflight
+	$(MAKE) install-cli
 	sh harnesses/update.sh
 
 fmt:

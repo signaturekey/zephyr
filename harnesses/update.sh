@@ -5,10 +5,10 @@ umask 077
 
 usage() {
   cat >&2 <<'EOF'
-usage: sh harnesses/update.sh
+usage: sh harnesses/update.sh [--preflight]
 
-Safely replaces an existing, unmodified Zephyr harness installation with the
-package from this checkout. The previous installation is kept in a backup and
+Safely replaces a verified Zephyr harness installation, including packages
+created by older manifests. The previous installation is kept in a backup and
 restored automatically if publication of the new package fails.
 EOF
 }
@@ -16,6 +16,11 @@ EOF
 case "${1:-}" in
   '')
     update_codex=yes
+    preflight_only=no
+    ;;
+  --preflight)
+    update_codex=yes
+    preflight_only=yes
     ;;
   --help|-h)
     usage
@@ -27,7 +32,7 @@ case "${1:-}" in
     ;;
 esac
 
-if [ "$#" -ne 0 ]; then
+if [ "$#" -gt 1 ]; then
   usage
   exit 2
 fi
@@ -112,6 +117,19 @@ hash_file() {
   exit 1
 }
 
+verify_source_manifest() {
+  if command -v shasum >/dev/null 2>&1; then
+    (cd "$repo_root" && shasum -a 256 -c "harnesses/assets.sha256" >/dev/null)
+    return
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$repo_root" && sha256sum -c "harnesses/assets.sha256" >/dev/null)
+    return
+  fi
+  echo "cannot verify update source: shasum or sha256sum is required" >&2
+  exit 1
+}
+
 manifest_hash() {
   manifest_file=$1
   manifest_asset=$2
@@ -125,10 +143,14 @@ verify_installed_file() {
   installed_file=$1
   installed_manifest=$2
   source_asset=$3
+  allow_missing=${4:-no}
 
   require_regular_file "$installed_file"
   expected_hash=$(manifest_hash "$installed_manifest" "$source_asset")
   if [ -z "$expected_hash" ]; then
+    if [ "$allow_missing" = yes ]; then
+      return
+    fi
     echo "installed manifest has no unique entry for: $source_asset" >&2
     exit 1
   fi
@@ -278,7 +300,7 @@ verify_codex_installation() {
   installed_manifest="$installed_skill/references/assets.sha256"
   require_regular_file "$installed_manifest"
   verify_installed_file "$installed_skill/SKILL.md" "$installed_manifest" "harnesses/codex/SKILL.md"
-  verify_installed_file "$installed_skill/scripts/acquire-pr.sh" "$installed_manifest" "harnesses/codex/acquire-pr.sh"
+  verify_installed_file "$installed_skill/scripts/acquire-pr.sh" "$installed_manifest" "harnesses/codex/acquire-pr.sh" yes
   verify_installed_file "$installed_skill/scripts/dispatch.sh" "$installed_manifest" "harnesses/codex/dispatch.sh"
   verify_installed_file "$installed_skill/agents/openai.yaml" "$installed_manifest" "harnesses/codex/discovery/agents/openai.yaml"
   verify_manifest_group "$installed_skill" "$installed_manifest" "roles/" "roles" ".md"
@@ -442,6 +464,15 @@ case "$backup_parent/" in
     exit 1
     ;;
 esac
+
+if [ "$preflight_only" = yes ]; then
+  verify_source_manifest
+  if [ "$update_codex" = yes ]; then
+    preflight_staged_agents "$repo_root/harnesses/codex/agents" "$codex_skill_root" "$codex_agents_dir" ".toml"
+  fi
+  echo "Zephyr update preflight passed."
+  exit 0
+fi
 
 reject_symlink_components "$backup_parent"
 mkdir -p "$backup_parent"

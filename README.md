@@ -138,9 +138,12 @@ make uninstall-skill  # только skills и reviewer definitions
 make uninstall-cli    # только binary
 ```
 
-Installer и updater не перезаписывают отличающиеся пользовательские файлы без
-проверки. После установки, обновления или удаления skill откройте новую сессию
-Codex.
+Updater распознаёт старые Zephyr skill и CLI по manifest, структуре Go-модуля и
+version-протоколу без привязки к адресу прежнего репозитория. Uninstaller
+удаляет проверенные legacy-версии; известные файлы, отсутствующие в старом
+manifest и отличающиеся от текущего source, сохраняются в private backup.
+Неизвестные файлы, symlink и повреждённые manifest-assets остаются fail-closed.
+После установки, обновления или удаления skill откройте новую сессию Codex.
 
 ### Первое ревью
 

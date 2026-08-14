@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -413,9 +414,9 @@ def validate_installers() -> None:
 
     uninstall_cli_text = cli_uninstaller.read_text(encoding="utf-8")
     for phrase in (
-        "github.com/signaturekey/zephyr/cmd/zephyr",
-        "github.com/signaturekey/zephyr/cmd/zephyr-codex",
-        "refusing to remove a CLI that is not built from",
+        '*/zephyr/cmd/"$command_name"',
+        "foreign command provenance",
+        "foreign module provenance",
         "refusing to remove an incomplete Zephyr CLI pair",
     ):
         if phrase not in uninstall_cli_text:
@@ -445,7 +446,7 @@ def validate_installers() -> None:
     if "Run zephyr-codex doctor before the first experimental review." not in bootstrap_text:
         fail("bootstrap must print the experimental-driver preflight reminder")
 
-    if "refusing to remove a CLI that is not built from" not in uninstall_cli_text:
+    if "foreign command provenance" not in uninstall_cli_text:
         fail("CLI uninstaller must preserve foreign binaries")
 
     for phrase in (
@@ -525,6 +526,7 @@ def validate_installers() -> None:
 
     validate_updater_behavior()
     validate_cli_pair_behavior()
+    validate_legacy_install_compatibility()
 
 
 def validate_cli_pair_behavior() -> None:
@@ -821,6 +823,179 @@ exec /bin/mv "$@"
             )
             if verify_restored.returncode != 0:
                 fail(f"rollback after mv {fail_at} did not restore an exact install: {verify_restored.stderr.strip()}")
+
+
+def validate_legacy_install_compatibility() -> None:
+    canonical_temp = Path(tempfile.gettempdir()).resolve()
+
+    def environment_for(root: Path) -> dict[str, str]:
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "GOBIN": str(root / "gobin"),
+                "ZEPHYR_CODEX_SKILLS_DIR": str(root / "skills"),
+                "ZEPHYR_CODEX_AGENTS_DIR": str(root / "agents"),
+                "ZEPHYR_BACKUP_DIR": str(root / "backups"),
+            }
+        )
+        for name in ("gobin", "skills", "agents", "backups"):
+            (root / name).mkdir()
+        return environment
+
+    def install_current(environment: dict[str, str]) -> Path:
+        result = subprocess.run(
+            ["sh", str(ROOT / "harnesses/install.sh")],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        if result.returncode != 0:
+            fail(f"legacy fixture install failed: {result.stderr.strip()}")
+        return Path(environment["ZEPHYR_CODEX_SKILLS_DIR"]) / "zephyr"
+
+    def omit_manifest_asset(skill_root: Path, source_asset: str) -> None:
+        manifest = skill_root / "references/assets.sha256"
+        lines = [
+            line
+            for line in manifest.read_text(encoding="utf-8").splitlines()
+            if line.split(maxsplit=1)[-1] != source_asset
+        ]
+        manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def build_legacy_cli(root: Path, command: str, output: Path) -> None:
+        module = root / "legacy-module"
+        command_root = module / "cmd" / command
+        command_root.mkdir(parents=True, exist_ok=True)
+        (module / "go.mod").write_text("module legacy.example/legacy/zephyr\n\ngo 1.24\n", encoding="utf-8")
+        (command_root / "main.go").write_text(
+            "package main\n"
+            "import (\"fmt\"; \"os\")\n"
+            "func main() { if len(os.Args) != 2 || os.Args[1] != \"version\" { os.Exit(2) }; "
+            "fmt.Println(`{\"version\":\"legacy\",\"commit\":\"old\",\"dirty\":\"false\",\"protocol_version\":1}`) }\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            ["go", "build", "-o", str(output), f"./cmd/{command}"],
+            cwd=module,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            fail(f"could not build legacy {command}: {result.stderr.strip()}")
+
+    with tempfile.TemporaryDirectory(prefix="zephyr-legacy-uninstall-", dir=canonical_temp) as temporary:
+        root = Path(temporary)
+        environment = environment_for(root)
+        skill_root = install_current(environment)
+        omit_manifest_asset(skill_root, "harnesses/codex/acquire-pr.sh")
+        result = subprocess.run(
+            ["sh", str(ROOT / "harnesses/uninstall.sh")],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        if result.returncode != 0 or skill_root.exists():
+            fail(f"legacy manifest uninstall failed: {result.stderr.strip()}")
+
+    with tempfile.TemporaryDirectory(prefix="zephyr-legacy-preserve-", dir=canonical_temp) as temporary:
+        root = Path(temporary)
+        environment = environment_for(root)
+        skill_root = install_current(environment)
+        omitted = skill_root / "scripts/acquire-pr.sh"
+        omitted.write_text(omitted.read_text(encoding="utf-8") + "\nlegacy local edit\n", encoding="utf-8")
+        omit_manifest_asset(skill_root, "harnesses/codex/acquire-pr.sh")
+        result = subprocess.run(
+            ["sh", str(ROOT / "harnesses/uninstall.sh")],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        preserved = list((root / "backups").glob("zephyr-uninstall.*/skill/scripts/acquire-pr.sh"))
+        if result.returncode != 0 or skill_root.exists() or len(preserved) != 1:
+            fail(f"legacy modified file was not preserved during uninstall: {result.stderr.strip()}")
+        if "legacy local edit" not in preserved[0].read_text(encoding="utf-8"):
+            fail("legacy uninstall backup lost the modified file")
+
+    with tempfile.TemporaryDirectory(prefix="zephyr-legacy-update-", dir=canonical_temp) as temporary:
+        root = Path(temporary)
+        environment = environment_for(root)
+        skill_root = install_current(environment)
+        omit_manifest_asset(skill_root, "harnesses/codex/acquire-pr.sh")
+        legacy_core = root / "legacy-zephyr"
+        legacy_codex = root / "legacy-zephyr-codex"
+        build_legacy_cli(root, "zephyr", legacy_core)
+        build_legacy_cli(root, "zephyr-codex", legacy_codex)
+        shutil.copy2(legacy_core, root / "gobin/zephyr")
+        shutil.copy2(legacy_codex, root / "gobin/zephyr-codex")
+        result = subprocess.run(
+            ["make", "update"],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        if result.returncode != 0:
+            fail(f"legacy make update failed: {result.stderr.strip()}")
+        version = subprocess.run(
+            [str(root / "gobin/zephyr"), "version"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if version.returncode != 0 or '"codex_harness_api_version": 2' not in version.stdout:
+            fail("legacy make update did not publish the current CLI pair")
+
+        modified_agent = root / "agents/zephyr-code-reviewer.toml"
+        modified_agent.write_text(modified_agent.read_text(encoding="utf-8") + "\nlocal edit\n", encoding="utf-8")
+        shutil.copy2(legacy_core, root / "gobin/zephyr")
+        shutil.copy2(legacy_codex, root / "gobin/zephyr-codex")
+        legacy_core_bytes = (root / "gobin/zephyr").read_bytes()
+        legacy_codex_bytes = (root / "gobin/zephyr-codex").read_bytes()
+        rejected_update = subprocess.run(
+            ["make", "update"],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        if rejected_update.returncode == 0:
+            fail("legacy update accepted a modified manifest-covered agent")
+        if (root / "gobin/zephyr").read_bytes() != legacy_core_bytes or (root / "gobin/zephyr-codex").read_bytes() != legacy_codex_bytes:
+            fail("failed legacy update changed CLI binaries before skill preflight")
+
+        shutil.copy2(legacy_core, root / "gobin/zephyr")
+        shutil.copy2(legacy_codex, root / "gobin/zephyr-codex")
+        removed_pair = subprocess.run(
+            ["sh", str(ROOT / "harnesses/uninstall-cli.sh")],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        if removed_pair.returncode != 0 or (root / "gobin/zephyr").exists() or (root / "gobin/zephyr-codex").exists():
+            fail(f"legacy CLI pair uninstall failed: {removed_pair.stderr.strip()}")
+
+        shutil.copy2(legacy_core, root / "gobin/zephyr")
+        removed_single = subprocess.run(
+            ["sh", str(ROOT / "harnesses/uninstall-cli.sh")],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        if removed_single.returncode != 0 or (root / "gobin/zephyr").exists():
+            fail(f"legacy single CLI uninstall failed: {removed_single.stderr.strip()}")
 
 
 def validate_codex_dispatcher() -> None:

@@ -64,7 +64,7 @@ model_policy:
 		"probe\t-\tgpt-5.6-luna\tlow\ttrue",
 		"reviewer\tcode-reviewer\tgpt-5.6-terra\tmedium\ttrue",
 		"reviewer\tsecurity-auditor\tgpt-5.6-sol\txhigh\ttrue",
-		"evidence-gate\t-\tgpt-5.6-luna\thigh\tfalse",
+		"evidence-gate\t-\tgpt-5.6-sol\txhigh\tfalse",
 	} {
 		if !strings.Contains(string(policy), want) {
 			t.Fatalf("frozen policy lacks %q:\n%s", want, policy)

@@ -1,13 +1,14 @@
 #!/bin/sh
 
 set -eu
+umask 077
 
 usage() {
   cat >&2 <<'EOF'
 usage: sh harnesses/uninstall.sh
 
-Removes only files verified by the manifest installed with the Zephyr harness
-package. Modified or unrelated files make the uninstall fail before deletion.
+Removes files verified by the installed Zephyr manifest. Known files omitted
+by an older manifest are preserved in a private backup when they differ.
 EOF
 }
 
@@ -39,6 +40,8 @@ fi
 
 codex_skills_dir=${ZEPHYR_CODEX_SKILLS_DIR:-"$HOME/.agents/skills"}
 codex_agents_dir=${ZEPHYR_CODEX_AGENTS_DIR:-"$HOME/.codex/agents"}
+backup_parent=${ZEPHYR_BACKUP_DIR:-"$HOME/.codex/backups"}
+legacy_preservation_required=no
 
 require_absolute() {
   absolute_path=$1
@@ -135,10 +138,13 @@ check_removal() {
     if [ "$installed_manifest_verified" = yes ]; then
       source_asset=${removal_source#"$repo_root"/}
       expected_hash=$(manifest_hash "$installed_manifest" "$source_asset")
-      if [ -z "$expected_hash" ] || [ "$(hash_file "$removal_destination")" != "$expected_hash" ]; then
+      if [ -n "$expected_hash" ] && [ "$(hash_file "$removal_destination")" != "$expected_hash" ]; then
         echo "refusing to remove modified or foreign file: $removal_destination" >&2
         echo "remove it manually after reviewing its contents" >&2
         exit 1
+      fi
+      if [ -z "$expected_hash" ] && ! cmp -s "$removal_source" "$removal_destination"; then
+        legacy_preservation_required=yes
       fi
       return
     fi
@@ -148,6 +154,45 @@ check_removal() {
       exit 1
     fi
   fi
+}
+
+verify_known_skill_files() {
+  installed_skill=$1
+  if find "$installed_skill" -type l -print | grep -q .; then
+    echo "refusing to remove skill containing symlinks: $installed_skill" >&2
+    exit 1
+  fi
+  while IFS= read -r installed_file; do
+    relative_file=${installed_file#"$installed_skill"/}
+    case "$relative_file" in
+      SKILL.md|references/assets.sha256|scripts/acquire-pr.sh|scripts/dispatch.sh|agents/openai.yaml)
+        ;;
+      references/roles/*.md)
+        [ -f "$repo_root/roles/${relative_file#references/roles/}" ] || {
+          echo "refusing to remove unknown file: $installed_file" >&2
+          exit 1
+        }
+        ;;
+      references/schemas/*.json)
+        [ -f "$repo_root/schemas/${relative_file#references/schemas/}" ] || {
+          echo "refusing to remove unknown file: $installed_file" >&2
+          exit 1
+        }
+        ;;
+      references/agents/zephyr-*.toml)
+        [ -f "$repo_root/harnesses/codex/agents/${relative_file#references/agents/}" ] || {
+          echo "refusing to remove unknown file: $installed_file" >&2
+          exit 1
+        }
+        ;;
+      *)
+        echo "refusing to remove unknown file: $installed_file" >&2
+        exit 1
+        ;;
+    esac
+  done <<EOF
+$(find "$installed_skill" -type f -print | sort)
+EOF
 }
 
 hash_file() {
@@ -213,8 +258,12 @@ verify_asset_manifest
 
 require_absolute "$codex_skills_dir"
 require_absolute "$codex_agents_dir"
+require_absolute "$backup_parent"
 codex_skill_root="$codex_skills_dir/zephyr"
   prepare_installed_manifest "$codex_skill_root" "$repo_root/harnesses/codex/SKILL.md" "$codex_skill_root/SKILL.md"
+  if [ -d "$codex_skill_root" ] && [ ! -L "$codex_skill_root" ]; then
+    verify_known_skill_files "$codex_skill_root"
+  fi
 
   check_removal "$repo_root/harnesses/codex/SKILL.md" "$codex_skill_root/SKILL.md"
   check_removal "$repo_root/harnesses/codex/acquire-pr.sh" "$codex_skill_root/scripts/acquire-pr.sh"
@@ -231,6 +280,20 @@ codex_skill_root="$codex_skills_dir/zephyr"
     check_removal "$source_path" "$codex_agents_dir/${source_path##*/}"
     check_removal "$source_path" "$codex_skill_root/references/agents/${source_path##*/}"
   done
+  legacy_backup=
+  if [ "$legacy_preservation_required" = yes ]; then
+    case "$backup_parent/" in
+      "$codex_skill_root"/*)
+        echo "backup directory must be outside installed Zephyr skills: $backup_parent" >&2
+        exit 1
+        ;;
+    esac
+    reject_symlink_components "$backup_parent"
+    mkdir -p "$backup_parent"
+    reject_symlink_components "$backup_parent"
+    legacy_backup=$(mktemp -d "$backup_parent/zephyr-uninstall.XXXXXX")
+    cp -R "$codex_skill_root" "$legacy_backup/skill"
+  fi
   for source_path in "$repo_root"/harnesses/codex/agents/zephyr-*.toml; do
     remove_file "$codex_agents_dir/${source_path##*/}"
     remove_file "$codex_skill_root/references/agents/${source_path##*/}"
@@ -254,5 +317,9 @@ codex_skill_root="$codex_skills_dir/zephyr"
   remove_empty_dir "$codex_skill_root/scripts"
   remove_empty_dir "$codex_skill_root"
 echo "Удалены соответствующие файлы Zephyr для Codex."
+
+if [ -n "$legacy_backup" ]; then
+  echo "Сохранены legacy-файлы перед удалением: $legacy_backup"
+fi
 
 echo "Начните новую сессию harness, чтобы она забыла удалённые определения skill и agents."
