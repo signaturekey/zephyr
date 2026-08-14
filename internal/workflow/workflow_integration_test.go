@@ -1121,6 +1121,48 @@ func TestPrepareEvidenceWritesMinimalStableArtifactAfterReview(t *testing.T) {
 	assert.Equal(t, first.Evidence, after.Artifacts.MinimalEvidence)
 }
 
+func TestPrepareEvidenceWritesFrozenPlanEvidenceForPlanOnlyArtifactFinding(t *testing.T) {
+	repository := newRepository(t)
+	planPath := filepath.Join(repository, "REVIEW_SPEC.md")
+	writeFile(t, planPath, "# Migration\n\nThe rollout has no rollback.\n")
+	service, err := workflow.New(t.TempDir())
+	require.NoError(t, err)
+	ctx := context.Background()
+	initialized, err := service.Init(ctx, workflow.InitOptions{
+		Repository: repository, Mode: run.ModePlan, Source: run.SourcePlanOnly, PlanPath: planPath,
+	})
+	require.NoError(t, err)
+	_, err = service.Collect(ctx, workflow.CollectOptions{RunID: initialized.RunID})
+	require.NoError(t, err)
+	routed, err := routeWithNoExternalContext(t, ctx, service, initialized.RunID)
+	require.NoError(t, err)
+	for _, decision := range routed.Routing.Selected {
+		envelope := schema.CandidateEnvelope{Version: schema.ProtocolVersion, RunID: initialized.RunID, Role: decision.Role, Findings: []schema.CandidateFinding{}}
+		if decision.Role == config.RoleArchitectReviewer {
+			envelope.Findings = []schema.CandidateFinding{{
+				ID: "architect-reviewer-plan-evidence", Role: decision.Role, Severity: schema.SeverityP1, Category: "rollback-safety",
+				Title: "Rollout lacks rollback", Location: schema.FindingLocation{Artifact: "review-spec.md", Section: "Migration", LineStart: 3, LineEnd: 3},
+				Evidence: schema.FindingEvidence{ExecutionPath: "rollout fails after schema change", ViolatedInvariant: "production rollout must be reversible", FalsifierChecked: "plan contains no rollback step"},
+				Impact:   "failed rollout cannot be safely reverted", Recommendation: "define a rollback path", Confidence: 0.9,
+			}}
+		}
+		validated, err := service.ValidateCandidates(ctx, workflow.ValidateCandidatesOptions{RunID: initialized.RunID, Role: decision.Role, Input: marshalJSON(t, envelope)})
+		require.NoError(t, err)
+		if decision.Role == config.RoleArchitectReviewer {
+			assert.Equal(t, 1, validated.Accepted)
+			assert.Equal(t, 0, validated.Rejected)
+		}
+	}
+
+	prepared, err := service.PrepareEvidence(ctx, workflow.PrepareEvidenceOptions{RunID: initialized.RunID})
+	require.NoError(t, err)
+	assert.Equal(t, 1, prepared.Items)
+	bytes, err := os.ReadFile(prepared.Evidence)
+	require.NoError(t, err)
+	assert.Contains(t, string(bytes), "The rollout has no rollback.")
+	assert.NotContains(t, string(bytes), repository)
+}
+
 func TestPrepareEvidenceRejectsMissingValidatedReviewerAndFrozenMismatch(t *testing.T) {
 	repository := newRepository(t)
 	writeFile(t, filepath.Join(repository, "main.go"), "package example\n\nfunc changed() {}\n")

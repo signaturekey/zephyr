@@ -78,6 +78,37 @@ func TestBuildGateInputNormalizesMissingLineEnd(t *testing.T) {
 	require.Equal(t, schema.FindingLocation{File: "main.go", LineStart: 184, LineEnd: 184}, input.Items[0].Location)
 }
 
+func TestBuildGateInputIncludesFrozenPlanAndBusinessContextForArtifactFindings(t *testing.T) {
+	plan := &contextpack.Document{Kind: "plan", Path: "docs/PLAN.md", Content: "# Plan\n\nShip the migration.\n"}
+	business := []contextpack.BusinessSnapshot{{Source: "confluence", Key: "123", Content: "Migration must be reversible."}}
+
+	input, err := BuildGateInput(CandidateSet{
+		Version: schema.ProtocolVersion,
+		RunID:   "run-1",
+		Findings: []schema.CandidateFinding{{
+			ID:       "architect-reviewer-plan-evidence",
+			Location: schema.FindingLocation{Artifact: "PLAN.md", Section: "Migration", LineStart: 3, LineEnd: 3},
+		}},
+	}, contextpack.Packet{
+		Version:         contextpack.Version,
+		RunID:           "run-1",
+		Mode:            "plan",
+		Plan:            plan,
+		BusinessContext: business,
+		ProjectInstructions: []contextpack.Document{{
+			Path: "AGENTS.md", Content: "MUST NOT LEAK",
+		}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, GateInput{
+		Version:         schema.ProtocolVersion,
+		RunID:           "run-1",
+		Items:           []GateEvidenceItem{{CandidateID: "architect-reviewer-plan-evidence", Location: schema.FindingLocation{Artifact: "PLAN.md", Section: "Migration", LineStart: 3, LineEnd: 3}, DiffHunks: []string{}}},
+		Plan:            plan,
+		BusinessContext: business,
+	}, input)
+}
+
 func TestBuildGateInputRejectsInvalidOrUnmappedCandidates(t *testing.T) {
 	packet := contextpack.Packet{Version: contextpack.Version, RunID: "run-1", Diff: contextpack.Diff{Full: "--- a/main.go\n+++ b/main.go\n@@ -1 +1 @@\n-old\n+new\n"}}
 	valid := CandidateSet{Version: schema.ProtocolVersion, RunID: "run-1", Findings: []schema.CandidateFinding{gateCandidate("one", "main.go", 1, 1)}}
@@ -86,11 +117,19 @@ func TestBuildGateInputRejectsInvalidOrUnmappedCandidates(t *testing.T) {
 		"version mismatch":  {Version: 99, RunID: "run-1"},
 		"run mismatch":      {Version: schema.ProtocolVersion, RunID: "other"},
 		"empty id":          {Version: schema.ProtocolVersion, RunID: "run-1", Findings: []schema.CandidateFinding{gateCandidate("", "main.go", 1, 1)}},
-		"artifact location": {Version: schema.ProtocolVersion, RunID: "run-1", Findings: []schema.CandidateFinding{{ID: "artifact", Location: schema.FindingLocation{Artifact: "PLAN.md", Section: "scope"}}}},
+		"mixed location":    {Version: schema.ProtocolVersion, RunID: "run-1", Findings: []schema.CandidateFinding{{ID: "mixed", Location: schema.FindingLocation{File: "main.go", Artifact: "PLAN.md", Section: "scope", LineStart: 1}}}},
+		"empty location":    {Version: schema.ProtocolVersion, RunID: "run-1", Findings: []schema.CandidateFinding{{ID: "empty"}}},
+		"missing plan":      {Version: schema.ProtocolVersion, RunID: "run-1", Findings: []schema.CandidateFinding{{ID: "artifact", Location: schema.FindingLocation{Artifact: "PLAN.md", Section: "scope"}}}},
+		"artifact mismatch": {Version: schema.ProtocolVersion, RunID: "run-1", Findings: []schema.CandidateFinding{{ID: "artifact", Location: schema.FindingLocation{Artifact: "OTHER.md", Section: "scope"}}}},
 		"unmapped range":    {Version: schema.ProtocolVersion, RunID: "run-1", Findings: []schema.CandidateFinding{gateCandidate("missing", "main.go", 99, 99)}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := BuildGateInput(candidates, packet)
+			candidatePacket := packet
+			if name == "artifact mismatch" {
+				candidatePacket.Mode = "plan"
+				candidatePacket.Plan = &contextpack.Document{Path: "PLAN.md", Content: "# Plan\n"}
+			}
+			_, err := BuildGateInput(candidates, candidatePacket)
 			assert.Error(t, err)
 		})
 	}
