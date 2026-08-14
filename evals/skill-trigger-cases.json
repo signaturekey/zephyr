@@ -1,0 +1,33 @@
+{
+  "positive": [
+    {
+      "request": "Запусти zephyr-codex doctor перед экспериментальным ревью.",
+      "activation_phrase": "zephyr-codex doctor",
+      "expected_driver_activation": true
+    },
+    {
+      "request": "Сделай zephyr-codex review --repo /tmp/repository.",
+      "activation_phrase": "zephyr-codex review",
+      "expected_driver_activation": true
+    },
+    {
+      "request": "Используй experimental local driver для working-tree implementation review.",
+      "activation_phrase": "experimental local driver",
+      "expected_driver_activation": true
+    }
+  ],
+  "negative": [
+    {
+      "request": "Проверь план REVIEW_SPEC.md перед реализацией.",
+      "expected_driver_activation": false
+    },
+    {
+      "request": "Проверь локальные Go-изменения перед коммитом.",
+      "expected_driver_activation": false
+    },
+    {
+      "request": "Проверь pull request по ссылке и требования Jira.",
+      "expected_driver_activation": false
+    }
+  ]
+}

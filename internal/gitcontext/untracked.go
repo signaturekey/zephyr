@@ -7,12 +7,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 )
 
 const maximumAllowedUntrackedBytes int64 = 16 * 1024 * 1024
+
+var awsSecretAssignment = regexp.MustCompile(`(?im)^\s*(?:export\s+)?["']?aws_secret_access_key["']?\s*[:=]`)
 
 func collectUntracked(
 	repository string,
@@ -157,12 +160,14 @@ func hasSymlinkComponent(repository, relative string) (bool, error) {
 
 func containsLikelySecret(content []byte) bool {
 	lower := strings.ToLower(string(content))
+	if awsSecretAssignment.MatchString(lower) {
+		return true
+	}
 	for _, marker := range []string{
 		"-----begin private key-----",
 		"-----begin rsa private key-----",
 		"-----begin openssh private key-----",
 		"-----begin ec private key-----",
-		"aws_secret_access_key",
 		"client_secret=",
 		"client_secret:",
 		"api_key=",

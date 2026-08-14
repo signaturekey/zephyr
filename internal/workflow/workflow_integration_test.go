@@ -61,10 +61,10 @@ model_policy:
 		t.Fatalf("model policy hash = %q, want %q", got, want)
 	}
 	for _, want := range []string{
-		"probe\t-\tgpt-5.6-terra\tmedium\tfalse",
+		"probe\t-\tgpt-5.6-luna\tlow\ttrue",
 		"reviewer\tcode-reviewer\tgpt-5.6-terra\tmedium\ttrue",
 		"reviewer\tsecurity-auditor\tgpt-5.6-sol\txhigh\ttrue",
-		"evidence-gate\t-\tgpt-5.6-terra\txhigh\tfalse",
+		"evidence-gate\t-\tgpt-5.6-luna\thigh\tfalse",
 	} {
 		if !strings.Contains(string(policy), want) {
 			t.Fatalf("frozen policy lacks %q:\n%s", want, policy)
@@ -1079,6 +1079,135 @@ func TestTrackedCredentialAssignmentsAreRedactedFromPacket(t *testing.T) {
 	if !strings.Contains(string(packet), "[REDACTED]") {
 		t.Fatal("packet does not record credential redaction")
 	}
+}
+
+func TestPrepareEvidenceWritesMinimalStableArtifactAfterReview(t *testing.T) {
+	repository, service, runID := prepareEvidenceReadyRun(t)
+	ctx := context.Background()
+
+	beforeReview, err := workflow.New(t.TempDir())
+	require.NoError(t, err)
+	beforeReviewRun, err := beforeReview.Init(ctx, workflow.InitOptions{Repository: repository, Mode: run.ModeImplementation, Source: run.SourceWorkingTree})
+	require.NoError(t, err)
+	require.NoError(t, func() error {
+		_, err := beforeReview.Collect(ctx, workflow.CollectOptions{RunID: beforeReviewRun.RunID})
+		return err
+	}())
+	_, err = beforeReview.PrepareEvidence(ctx, workflow.PrepareEvidenceOptions{RunID: beforeReviewRun.RunID})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stage \"route\"")
+
+	first, err := service.PrepareEvidence(ctx, workflow.PrepareEvidenceOptions{RunID: runID})
+	require.NoError(t, err)
+	assert.Equal(t, runID, first.RunID)
+	assert.Equal(t, 1, first.Items)
+	firstBytes, err := os.ReadFile(first.Evidence)
+	require.NoError(t, err)
+	assert.NotContains(t, string(firstBytes), repository)
+	assert.NotContains(t, string(firstBytes), "review-packet")
+	assert.NotContains(t, string(firstBytes), "func unrelatedChanged() {}")
+	assert.Contains(t, string(firstBytes), "func changed() {}")
+
+	before, err := service.Inspect(ctx, runID)
+	require.NoError(t, err)
+	second, err := service.PrepareEvidence(ctx, workflow.PrepareEvidenceOptions{RunID: runID})
+	require.NoError(t, err)
+	secondBytes, err := os.ReadFile(second.Evidence)
+	require.NoError(t, err)
+	after, err := service.Inspect(ctx, runID)
+	require.NoError(t, err)
+	assert.Equal(t, firstBytes, secondBytes)
+	assert.Equal(t, before.Stages, after.Stages)
+	assert.Equal(t, first.Evidence, after.Artifacts.MinimalEvidence)
+}
+
+func TestPrepareEvidenceRejectsMissingValidatedReviewerAndFrozenMismatch(t *testing.T) {
+	repository := newRepository(t)
+	writeFile(t, filepath.Join(repository, "main.go"), "package example\n\nfunc changed() {}\n")
+	service, err := workflow.New(t.TempDir())
+	require.NoError(t, err)
+	ctx := context.Background()
+	initialized, err := service.Init(ctx, workflow.InitOptions{Repository: repository, Mode: run.ModeImplementation, Source: run.SourceWorkingTree})
+	require.NoError(t, err)
+	require.NoError(t, func() error {
+		_, err := service.Collect(ctx, workflow.CollectOptions{RunID: initialized.RunID})
+		return err
+	}())
+	routed, err := routeWithNoExternalContext(t, ctx, service, initialized.RunID)
+	require.NoError(t, err)
+	for _, decision := range routed.Routing.Selected {
+		require.NoError(t, func() error {
+			_, err := service.MarkFailed(ctx, workflow.MarkFailedOptions{RunID: initialized.RunID, Stage: "review", Role: decision.Role, Reason: "fixture failure"})
+			return err
+		}())
+	}
+	_, err = service.PrepareEvidence(ctx, workflow.PrepareEvidenceOptions{RunID: initialized.RunID})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no selected reviewer produced a validated result")
+
+	_, readyService, readyRunID := prepareEvidenceReadyRun(t)
+	inspected, err := readyService.Inspect(ctx, readyRunID)
+	require.NoError(t, err)
+	require.NotEmpty(t, inspected.Artifacts.Candidates)
+	require.NoError(t, os.WriteFile(inspected.Artifacts.Candidates, []byte(`{"version":1,"run_id":"other","findings":[]}`), 0o600))
+	_, err = readyService.PrepareEvidence(ctx, workflow.PrepareEvidenceOptions{RunID: readyRunID})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must match run")
+}
+
+func TestPrepareEvidenceRejectsStaleWorkingTree(t *testing.T) {
+	repository, service, runID := prepareEvidenceReadyRun(t)
+	writeFile(t, filepath.Join(repository, "main.go"), "package example\n\nfunc changedAgain() {}\n")
+	_, err := service.PrepareEvidence(context.Background(), workflow.PrepareEvidenceOptions{RunID: runID})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Git input changed")
+}
+
+func prepareEvidenceReadyRun(t *testing.T) (string, *workflow.Service, string) {
+	t.Helper()
+	repository := newRepository(t)
+	writeFile(t, filepath.Join(repository, "unrelated.go"), "package example\n\nfunc unrelated() {}\n")
+	gitRun(t, repository, "add", "unrelated.go")
+	gitRun(t, repository, "commit", "-m", "add unrelated fixture")
+	writeFile(t, filepath.Join(repository, "main.go"), "package example\n\nfunc changed() {}\n")
+	writeFile(t, filepath.Join(repository, "unrelated.go"), "package example\n\nfunc unrelatedChanged() {}\n")
+	service, err := workflow.New(t.TempDir())
+	require.NoError(t, err)
+	ctx := context.Background()
+	initialized, err := service.Init(ctx, workflow.InitOptions{Repository: repository, Mode: run.ModeImplementation, Source: run.SourceWorkingTree})
+	require.NoError(t, err)
+	require.NoError(t, func() error {
+		_, err := service.Collect(ctx, workflow.CollectOptions{RunID: initialized.RunID})
+		return err
+	}())
+	routed, err := routeWithNoExternalContext(t, ctx, service, initialized.RunID)
+	require.NoError(t, err)
+	for _, decision := range routed.Routing.Selected {
+		envelope := schema.CandidateEnvelope{Version: schema.ProtocolVersion, RunID: initialized.RunID, Role: decision.Role, Findings: []schema.CandidateFinding{}}
+		if decision.Role == config.RoleCodeReviewer {
+			code := "func changed() {}"
+			envelope.Findings = []schema.CandidateFinding{{
+				ID:       "code-reviewer-prepare-evidence",
+				Role:     decision.Role,
+				Severity: schema.SeverityP1,
+				Category: "functional-correctness",
+				Title:    "Changed implementation requires evidence",
+				Location: schema.FindingLocation{File: "main.go", LineStart: 3, LineEnd: 3},
+				Evidence: schema.FindingEvidence{
+					Code:              &code,
+					ExecutionPath:     "caller reaches the changed function",
+					ViolatedInvariant: "changed behavior remains intentional",
+					FalsifierChecked:  "no compensating caller exists",
+				},
+				Impact:         "caller behavior can regress",
+				Recommendation: "confirm the frozen changed line",
+				Confidence:     0.9,
+			}}
+		}
+		_, err := service.ValidateCandidates(ctx, workflow.ValidateCandidatesOptions{RunID: initialized.RunID, Role: decision.Role, Input: marshalJSON(t, envelope)})
+		require.NoError(t, err)
+	}
+	return repository, service, initialized.RunID
 }
 
 func newRepository(t *testing.T) string {

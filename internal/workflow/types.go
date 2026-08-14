@@ -164,6 +164,17 @@ type ValidateVerdictsOptions struct {
 	Input []byte
 }
 
+type PrepareEvidenceOptions struct {
+	RunID string
+}
+
+type PrepareEvidenceResult struct {
+	RunID        string `json:"run_id"`
+	CandidateSet string `json:"candidate_set_path"`
+	Evidence     string `json:"evidence_path"`
+	Items        int    `json:"items"`
+}
+
 type ValidateVerdictsResult struct {
 	RunID       string `json:"run_id"`
 	Verdicts    int    `json:"verdicts"`
@@ -202,19 +213,20 @@ type RenderResult struct {
 }
 
 type ArtifactPaths struct {
-	Manifest       string `json:"manifest"`
-	Snapshot       string `json:"snapshot,omitempty"`
-	Capabilities   string `json:"capabilities,omitempty"`
-	ModelPolicy    string `json:"model_policy,omitempty"`
-	Packet         string `json:"packet,omitempty"`
-	Routing        string `json:"routing,omitempty"`
-	RoutingRequest string `json:"routing_request,omitempty"`
-	Candidates     string `json:"candidates,omitempty"`
-	Verdicts       string `json:"verdicts,omitempty"`
-	ReviewJSON     string `json:"review_json,omitempty"`
-	ReviewMarkdown string `json:"review_markdown,omitempty"`
-	Rejected       string `json:"rejected,omitempty"`
-	Trace          string `json:"trace,omitempty"`
+	Manifest        string `json:"manifest"`
+	Snapshot        string `json:"snapshot,omitempty"`
+	Capabilities    string `json:"capabilities,omitempty"`
+	ModelPolicy     string `json:"model_policy,omitempty"`
+	Packet          string `json:"packet,omitempty"`
+	Routing         string `json:"routing,omitempty"`
+	RoutingRequest  string `json:"routing_request,omitempty"`
+	Candidates      string `json:"candidates,omitempty"`
+	MinimalEvidence string `json:"minimal_evidence,omitempty"`
+	Verdicts        string `json:"verdicts,omitempty"`
+	ReviewJSON      string `json:"review_json,omitempty"`
+	ReviewMarkdown  string `json:"review_markdown,omitempty"`
+	Rejected        string `json:"rejected,omitempty"`
+	Trace           string `json:"trace,omitempty"`
 }
 
 type InspectCounts struct {

@@ -1,6 +1,8 @@
 GO ?= go
 GOFMT ?= gofmt
 BINARY ?= bin/zephyr
+CORE_BINARY ?= $(BINARY)
+CODEX_BINARY ?= bin/zephyr-codex
 GO_FILES := $(shell find . -type f -name '*.go' -not -path './.git/*' -not -path './vendor/*' | sort)
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
@@ -10,7 +12,7 @@ LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.dirty=$(D
 .PHONY: help build install install-cli uninstall uninstall-skill uninstall-cli update fmt fmt-check test test-golden test-evals vet validate-harnesses check
 
 help:
-	@echo "build               собрать $(BINARY)"
+	@echo "build               собрать $(CORE_BINARY) и $(CODEX_BINARY)"
 	@echo "install             установить Zephyr CLI и пакет Codex"
 	@echo "uninstall           удалить Zephyr CLI и пакет Codex"
 	@echo "uninstall-skill     удалить пакет Zephyr из Codex"
@@ -26,14 +28,15 @@ help:
 	@echo "check                запустить форматирование, тесты, vet и проверку harness"
 
 build:
-	@mkdir -p "$(dir $(BINARY))"
-	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o "$(BINARY)" ./cmd/zephyr
+	sh harnesses/build-cli-pair.sh "$(GO)" "$(LDFLAGS)" "$(CORE_BINARY)" "$(CODEX_BINARY)"
 
 install: install-cli
 	sh harnesses/install.sh
 
 install-cli:
-	$(GO) install -ldflags "$(LDFLAGS)" ./cmd/zephyr
+	@install_dir="$$(GOBIN="$${GOBIN:-}" "$(GO)" env GOBIN)"; \
+	if [ -z "$$install_dir" ]; then install_dir="$$("$(GO)" env GOPATH | cut -d: -f1)/bin"; fi; \
+	sh harnesses/build-cli-pair.sh "$(GO)" "$(LDFLAGS)" "$$install_dir/zephyr" "$$install_dir/zephyr-codex"
 
 uninstall:
 	$(MAKE) uninstall-skill

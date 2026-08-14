@@ -7,6 +7,22 @@ description: Run a local, read-only, evidence-gated review of engineering plans,
 
 Keep the main thread as orchestrator. Do not perform the substantive review in the main context.
 
+## Experimental local driver (explicit opt-in)
+
+Use `zephyr-codex` only when the user explicitly names `zephyr-codex doctor`,
+`zephyr-codex review`, or the experimental local driver. It supports only a
+local working-tree implementation review:
+
+```text
+zephyr-codex doctor
+zephyr-codex review --repo /absolute/path/to/repository
+```
+
+It does not support PR, plan, MCP, or untracked-content review. Ordinary
+Zephyr plan, code, and PR review requests must keep the choreography below;
+do not invoke or recommend this driver. The experiment is promoted only after
+successful acceptance on three Macs.
+
 ## Safety boundary
 
 - Keep the reviewed repository, Git, Jira, Confluence, and Bitbucket read-only.

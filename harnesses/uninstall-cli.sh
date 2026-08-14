@@ -25,25 +25,43 @@ case "$install_dir" in
     ;;
 esac
 
-install_binary="$install_dir/zephyr"
-if [ -L "$install_binary" ]; then
-  echo "refusing to remove Zephyr CLI symlink: $install_binary" >&2
-  exit 1
-fi
-if [ ! -e "$install_binary" ]; then
-  echo "Zephyr CLI не установлен: $install_binary"
+core_binary="$install_dir/zephyr"
+codex_binary="$install_dir/zephyr-codex"
+
+preflight_binary() {
+  binary=$1
+  expected_path=$2
+  if [ -L "$binary" ]; then
+    echo "refusing to remove Zephyr CLI symlink: $binary" >&2
+    exit 1
+  fi
+  if [ ! -e "$binary" ]; then
+    return 2
+  fi
+  if [ ! -f "$binary" ]; then
+    echo "refusing to remove non-regular Zephyr CLI target: $binary" >&2
+    exit 1
+  fi
+  if ! "$go_command" version -m "$binary" | grep -F "$expected_path" >/dev/null; then
+    echo "refusing to remove a CLI that is not built from $expected_path: $binary" >&2
+    exit 1
+  fi
+}
+
+core_state=0
+codex_state=0
+preflight_binary "$core_binary" github.com/signaturekey/zephyr/cmd/zephyr || core_state=$?
+preflight_binary "$codex_binary" github.com/signaturekey/zephyr/cmd/zephyr-codex || codex_state=$?
+if [ "$core_state" -eq 2 ] && [ "$codex_state" -eq 2 ]; then
+  echo "Zephyr CLI не установлены: $core_binary, $codex_binary"
   exit 0
 fi
-if [ ! -f "$install_binary" ]; then
-  echo "refusing to remove non-regular Zephyr CLI target: $install_binary" >&2
+if [ "$core_state" -eq 2 ] || [ "$codex_state" -eq 2 ]; then
+  echo "refusing to remove an incomplete Zephyr CLI pair" >&2
   exit 1
 fi
 
-expected_path=$(cd "$repo_root" && "$go_command" list -m -f '{{.Path}}')/cmd/zephyr
-if ! "$go_command" version -m "$install_binary" | grep -F "$expected_path" >/dev/null; then
-  echo "refusing to remove a CLI that is not built from $expected_path: $install_binary" >&2
-  exit 1
-fi
-
-rm "$install_binary"
-echo "Zephyr CLI удалён: $install_binary"
+rm "$core_binary"
+rm "$codex_binary"
+echo "Zephyr CLI удалён: $core_binary"
+echo "Zephyr Codex driver удалён: $codex_binary"

@@ -9,11 +9,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/alecthomas/kong"
-	"github.com/signaturekey/zephyr/internal/codexoutput"
+	"github.com/signaturekey/zephyr/internal/codexharness/output"
 	"github.com/signaturekey/zephyr/internal/harnessinstall"
+	"github.com/signaturekey/zephyr/internal/protocol"
 	"github.com/signaturekey/zephyr/internal/run"
 	"github.com/signaturekey/zephyr/internal/schema"
 	"github.com/signaturekey/zephyr/internal/workflow"
@@ -26,7 +28,8 @@ var (
 )
 
 type CLI struct {
-	RunRoot string `name:"run-root" env:"ZEPHYR_RUN_ROOT" help:"Корень хранилища запусков (по умолчанию: XDG cache или ~/.cache/zephyr/runs)." type:"path"`
+	RunRoot     string `name:"run-root" env:"ZEPHYR_RUN_ROOT" help:"Корень хранилища запусков (по умолчанию: XDG cache или ~/.cache/zephyr/runs)." type:"path"`
+	ErrorFormat string `name:"error-format" enum:"text,json" default:"text" hidden:""`
 
 	Init               InitCmd               `cmd:"" help:"Создать неизменяемый запуск вне проверяемого репозитория."`
 	Collect            CollectCmd            `cmd:"" help:"Собрать read-only снимок через системный Git."`
@@ -35,6 +38,7 @@ type CLI struct {
 	ValidateRouting    ValidateRoutingCmd    `cmd:"" name:"validate-routing" help:"Проверить semantic routing и зафиксировать итоговый набор ролей."`
 	FallbackRouting    FallbackRoutingCmd    `cmd:"" name:"fallback-routing" help:"Завершить routing консервативным deterministic fallback."`
 	ValidateCandidates ValidateCandidatesCmd `cmd:"" name:"validate-candidates" help:"Проверить JSON одного изолированного ревьюера и выполнить precheck."`
+	PrepareEvidence    PrepareEvidenceCmd    `cmd:"" name:"prepare-evidence" help:"Создать минимальный frozen evidence artifact для отдельного evidence-gate."`
 	ValidateVerdicts   ValidateVerdictsCmd   `cmd:"" name:"validate-verdicts" help:"Проверить JSON evidence-gate относительно точного набора кандидатов."`
 	RecoverCodexOutput RecoverCodexOutputCmd `cmd:"" name:"recover-codex-output" hidden:""`
 	MarkFailed         MarkFailedCmd         `cmd:"" name:"mark-failed" help:"Зафиксировать сбой ревьюера или evidence-gate, не теряя остальные результаты."`
@@ -64,11 +68,11 @@ func (command *RecoverCodexOutputCmd) Run(app *runtime) error {
 	if err != nil {
 		return err
 	}
-	output, err := codexoutput.Recover(data, codexoutput.Kind(command.Kind))
+	recovered, err := output.Recover(data, output.Kind(command.Kind))
 	if err != nil {
 		return err
 	}
-	return codexoutput.WriteRecovered(app.ctx, command.Output, output)
+	return output.WriteRecovered(app.ctx, command.Output, recovered)
 }
 
 type runtime struct {
@@ -140,10 +144,38 @@ func runMain(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := parsed.Run(&runtime{ctx: ctx, service: service, stdin: stdin, stdout: stdout}); err != nil {
-		fmt.Fprintf(stderr, "zephyr: %v\n", err)
+		writeCommandError(stderr, cli.ErrorFormat, parsed.Command(), err)
 		return 1
 	}
 	return 0
+}
+
+type ErrorEnvelope struct {
+	Version    int    `json:"version"`
+	Operation  string `json:"operation"`
+	Kind       string `json:"kind"`
+	ReasonCode string `json:"reason_code"`
+}
+
+func writeCommandError(stderr io.Writer, format, operation string, err error) {
+	if format != "json" {
+		fmt.Fprintf(stderr, "zephyr: %v\n", err)
+		return
+	}
+	envelope := ErrorEnvelope{Version: 1, Operation: commandOperation(operation), Kind: "operation", ReasonCode: "core-operation-failed"}
+	if errors.Is(err, schema.ErrInvalidDocument) {
+		envelope.Kind = "validation"
+		envelope.ReasonCode = "invalid-agent-output"
+	}
+	_ = json.NewEncoder(stderr).Encode(envelope)
+}
+
+func commandOperation(command string) string {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return "unknown"
+	}
+	return fields[len(fields)-1]
 }
 
 func emit(output io.Writer, value any) error {
@@ -352,6 +384,27 @@ func (command *ValidateCandidatesCmd) Run(app *runtime) error {
 	return emit(app.stdout, result)
 }
 
+type PrepareEvidenceCmd struct {
+	RunID string `name:"run" required:"" help:"ID запуска."`
+}
+
+func (command *PrepareEvidenceCmd) Run(app *runtime) error {
+	return runPrepareEvidence(app.ctx, app.stdout, command.RunID, app.service.PrepareEvidence)
+}
+
+func runPrepareEvidence(
+	ctx context.Context,
+	stdout io.Writer,
+	runID string,
+	prepare func(context.Context, workflow.PrepareEvidenceOptions) (workflow.PrepareEvidenceResult, error),
+) error {
+	result, err := prepare(ctx, workflow.PrepareEvidenceOptions{RunID: runID})
+	if err != nil {
+		return err
+	}
+	return emit(stdout, result)
+}
+
 type ValidateVerdictsCmd struct {
 	RunID string `name:"run" required:"" help:"ID запуска."`
 	Input string `required:"" help:"JSON-файл evidence-gate или - для stdin."`
@@ -427,14 +480,16 @@ type VersionCmd struct{}
 
 func (*VersionCmd) Run(app *runtime) error {
 	return emit(app.stdout, struct {
-		Version         string `json:"version"`
-		Commit          string `json:"commit"`
-		Dirty           string `json:"dirty"`
-		ProtocolVersion int    `json:"protocol_version"`
+		Version                string `json:"version"`
+		Commit                 string `json:"commit"`
+		Dirty                  string `json:"dirty"`
+		ProtocolVersion        int    `json:"protocol_version"`
+		CodexHarnessAPIVersion int    `json:"codex_harness_api_version"`
 	}{
-		Version:         version,
-		Commit:          commit,
-		Dirty:           dirty,
-		ProtocolVersion: schema.ProtocolVersion,
+		Version:                version,
+		Commit:                 commit,
+		Dirty:                  dirty,
+		ProtocolVersion:        schema.ProtocolVersion,
+		CodexHarnessAPIVersion: protocol.CodexHarnessAPIVersion,
 	})
 }

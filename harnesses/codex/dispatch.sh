@@ -6,10 +6,11 @@ umask 077
 usage() {
   cat >&2 <<'EOF'
 usage:
-  dispatch.sh probe --output FILE [--policy FILE]
-  dispatch.sh routing --packet FILE --request FILE --compat FILE --output FILE [--policy FILE]
-  dispatch.sh reviewer --role ROLE --packet FILE --compat FILE --output FILE [--policy FILE] [--format-retry]
-  dispatch.sh evidence --prechecked FILE --evidence FILE --compat FILE --output FILE [--policy FILE]
+  dispatch.sh probe --output FILE [--policy FILE] [--private-diagnostics-dir DIR]
+  dispatch.sh smoke --compat FILE --output FILE [--policy FILE] [--private-diagnostics-dir DIR]
+  dispatch.sh routing --packet FILE --request FILE --compat FILE --output FILE [--policy FILE] [--private-diagnostics-dir DIR]
+  dispatch.sh reviewer --role ROLE --packet FILE --compat FILE --output FILE [--policy FILE] [--format-retry] [--private-diagnostics-dir DIR]
+  dispatch.sh evidence --prechecked FILE --evidence FILE --compat FILE --output FILE [--policy FILE] [--private-diagnostics-dir DIR]
 
 probe freezes the Codex CLI compatibility capabilities for one Zephyr run.
 Exact immutable inputs are streamed through stdin and never materialized through the parent agent's tool output.
@@ -32,6 +33,7 @@ compat=
 output=
 format_retry=no
 policy=
+private_diagnostics_dir=
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -73,6 +75,11 @@ while [ "$#" -gt 0 ]; do
     --policy)
       [ "$#" -ge 2 ] || { usage; exit 2; }
       policy=$2
+      shift 2
+      ;;
+    --private-diagnostics-dir)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      private_diagnostics_dir=$2
       shift 2
       ;;
     --format-retry)
@@ -153,6 +160,12 @@ case "$kind" in
   probe)
     [ -z "$role" ] && [ -z "$packet" ] && [ -z "$request" ] && [ -z "$prechecked" ] && [ -z "$evidence" ] && [ -z "$compat" ] && [ "$format_retry" = no ] || { usage; exit 2; }
     effort=high
+    diagnostics_component=probe
+    ;;
+  smoke)
+    [ -z "$role" ] && [ -z "$packet" ] && [ -z "$request" ] && [ -z "$prechecked" ] && [ -z "$evidence" ] && [ -n "$compat" ] && [ "$format_retry" = no ] || { usage; exit 2; }
+    effort=high
+    diagnostics_component=smoke
     ;;
   routing)
     [ -z "$role" ] && [ -n "$packet" ] && [ -n "$request" ] && [ -z "$prechecked" ] && [ -z "$evidence" ] && [ -n "$compat" ] && [ "$format_retry" = no ] || { usage; exit 2; }
@@ -164,6 +177,7 @@ case "$kind" in
     require_regular_absolute "$packet" packet
     require_regular_absolute "$request" request
     effort=high
+    diagnostics_component=routing
     ;;
   reviewer)
     case "$role" in
@@ -182,6 +196,7 @@ case "$kind" in
     verify_asset "$schema_path" schemas/candidate-findings.codex.schema.json
     require_regular_absolute "$packet" packet
     effort=high
+    diagnostics_component=reviewer-$role
     ;;
   evidence)
     [ -z "$role" ] && [ -z "$packet" ] && [ -z "$request" ] && [ -n "$prechecked" ] && [ -n "$evidence" ] && [ -n "$compat" ] && [ "$format_retry" = no ] || { usage; exit 2; }
@@ -193,6 +208,7 @@ case "$kind" in
     require_regular_absolute "$prechecked" prechecked
     require_regular_absolute "$evidence" evidence
     effort=xhigh
+    diagnostics_component=evidence
     ;;
   *)
     usage
@@ -217,11 +233,53 @@ if [ ! -d "$output_parent" ] || [ -L "$output_parent" ]; then
   exit 1
 fi
 
+if [ -n "$private_diagnostics_dir" ]; then
+  case "$private_diagnostics_dir" in
+    /*) ;;
+    *)
+      echo "zephyr codex dispatch: private diagnostics path must be absolute" >&2
+      exit 1
+      ;;
+  esac
+  if [ ! -d "$private_diagnostics_dir" ] || [ -L "$private_diagnostics_dir" ]; then
+    echo "zephyr codex dispatch: private diagnostics destination must be an existing non-symlink directory" >&2
+    exit 1
+  fi
+  diagnostics_mode=$(stat -f '%Lp' "$private_diagnostics_dir" 2>/dev/null || stat -c '%a' "$private_diagnostics_dir" 2>/dev/null || true)
+  if [ "$diagnostics_mode" != 700 ]; then
+    echo "zephyr codex dispatch: private diagnostics destination must have mode 0700" >&2
+    exit 1
+  fi
+fi
+
 work_dir=$(mktemp -d "$output_parent/.zephyr-codex-dispatch.XXXXXX")
+active_codex_group=
+active_recovery_group=
+
+terminate_active_group() {
+  active_group=$1
+  [ -n "$active_group" ] || return 0
+  /bin/kill -TERM "-$active_group" 2>/dev/null || :
+  cleanup_wait=0
+  while /bin/kill -0 "-$active_group" 2>/dev/null && [ "$cleanup_wait" -lt 10 ]; do
+    sleep 0.1
+    cleanup_wait=$((cleanup_wait + 1))
+  done
+  if /bin/kill -0 "-$active_group" 2>/dev/null; then
+    /bin/kill -KILL "-$active_group" 2>/dev/null || :
+  fi
+}
+
 cleanup() {
+  trap - EXIT HUP INT TERM
+  terminate_active_group "$active_codex_group"
+  terminate_active_group "$active_recovery_group"
   rm -rf -- "$work_dir"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 prompt_file=$work_dir/prompt.txt
 last_message=$work_dir/last-message.json
 events_file=$work_dir/events.jsonl
@@ -236,6 +294,66 @@ retry_file=$work_dir/retry-directive.txt
 compatibility_features=$work_dir/features.txt
 mkdir -p "$empty_workspace" "$isolated_codex_home"
 chmod 700 "$isolated_codex_home"
+diagnostics_component_ready=no
+diagnostics_current_attempt=
+
+prepare_diagnostics_attempt() {
+  diagnostics_attempt=$1
+  [ -n "$private_diagnostics_dir" ] || return 0
+  diagnostics_component_dir=$private_diagnostics_dir/$diagnostics_component
+  if [ "$diagnostics_component_ready" = no ]; then
+    if [ -e "$diagnostics_component_dir" ] || [ -L "$diagnostics_component_dir" ]; then
+      echo "zephyr codex dispatch: refusing an existing private diagnostics component directory" >&2
+      exit 1
+    fi
+    mkdir "$diagnostics_component_dir"
+    chmod 700 "$diagnostics_component_dir"
+    diagnostics_component_ready=yes
+  fi
+  diagnostics_attempt_dir=$diagnostics_component_dir/attempt-$diagnostics_attempt
+  if [ "$diagnostics_current_attempt" != "$diagnostics_attempt" ]; then
+    if [ -e "$diagnostics_attempt_dir" ] || [ -L "$diagnostics_attempt_dir" ]; then
+      echo "zephyr codex dispatch: refusing an existing private diagnostics attempt directory" >&2
+      exit 1
+    fi
+    mkdir "$diagnostics_attempt_dir"
+    chmod 700 "$diagnostics_attempt_dir"
+    diagnostics_current_attempt=$diagnostics_attempt
+  fi
+}
+
+retain_diagnostic_file() {
+  retained_source=$1
+  retained_name=$2
+  retained_attempt=$3
+  [ -n "$private_diagnostics_dir" ] || return 0
+  [ -f "$retained_source" ] && [ ! -L "$retained_source" ] || return 0
+  case "$retained_name" in
+    stderr.log|events.jsonl|recovery-stderr.log|smoke-stderr.log|smoke-events.jsonl|probe-version.stderr|probe-features.stderr|probe-exec-help.stderr) ;;
+    *)
+      echo "zephyr codex dispatch: internal private diagnostics basename is not allowed" >&2
+      exit 1
+      ;;
+  esac
+  prepare_diagnostics_attempt "$retained_attempt"
+  retained_temp=$diagnostics_attempt_dir/.$retained_name.tmp.$$
+  cp "$retained_source" "$retained_temp"
+  chmod 600 "$retained_temp"
+  mv "$retained_temp" "$diagnostics_attempt_dir/$retained_name"
+}
+
+retain_smoke_attempt() {
+  retained_attempt=$1
+  retain_diagnostic_file "$smoke_stderr" smoke-stderr.log "$retained_attempt"
+  retain_diagnostic_file "$smoke_events" smoke-events.jsonl "$retained_attempt"
+}
+
+retain_dispatch_attempt() {
+  retained_attempt=$1
+  retain_diagnostic_file "$stderr_file" stderr.log "$retained_attempt"
+  retain_diagnostic_file "$events_file" events.jsonl "$retained_attempt"
+  retain_diagnostic_file "$recovery_stderr_file" recovery-stderr.log "$retained_attempt"
+}
 
 execution_model=inherit
 execution_effort=$effort
@@ -248,7 +366,7 @@ if [ -n "$policy" ]; then
     exit 1
   fi
   case "$kind" in
-    probe) policy_process=probe; policy_role=- ;;
+    probe|smoke) policy_process=probe; policy_role=- ;;
     routing) policy_process=semantic-router; policy_role=- ;;
     reviewer) policy_process=reviewer; policy_role=$role ;;
     evidence) policy_process=evidence-gate; policy_role=- ;;
@@ -324,7 +442,7 @@ if [ ! -x "$zephyr_core_path" ]; then
   exit 1
 fi
 
-probe_timeout=${ZEPHYR_CODEX_PROBE_TIMEOUT:-10}
+probe_timeout=${ZEPHYR_CODEX_PROBE_TIMEOUT:-60}
 case "$probe_timeout" in
   ''|*[!0-9]*)
     echo "zephyr codex dispatch: ZEPHYR_CODEX_PROBE_TIMEOUT must be an integer" >&2
@@ -422,6 +540,7 @@ run_with_timeout() {
     start_in_isolated_session "$@" < "$command_stdin"
   ) > "$command_stdout" 2> "$command_stderr" &
   command_pid=$!
+  active_codex_group=$command_pid
   (
     sleep "$timeout_limit" &
     watchdog_sleep_pid=$!
@@ -443,6 +562,7 @@ run_with_timeout() {
   else
     command_status=$?
   fi
+  active_codex_group=
   if [ -s "$watchdog_sleep_file" ]; then
     watchdog_sleep_pid=$(sed -n '1p' "$watchdog_sleep_file")
     kill "$watchdog_sleep_pid" 2>/dev/null || :
@@ -457,6 +577,18 @@ run_with_timeout() {
   return "$command_status"
 }
 
+core_version_stdout=$work_dir/core-version.json
+core_version_stderr=$work_dir/core-version.stderr
+if ! run_with_timeout 5 "$core_version_stdout" "$core_version_stderr" /dev/null "$zephyr_core_path" version; then
+  echo "zephyr codex dispatch: core-version-mismatch: unable to read Zephyr core version" >&2
+  exit 1
+fi
+core_harness_api=$(sed -n 's/.*"codex_harness_api_version"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$core_version_stdout")
+if [ "$core_harness_api" != 2 ]; then
+  echo "zephyr codex dispatch: core-version-mismatch: expected Codex harness API 2" >&2
+  exit 1
+fi
+
 run_probe_command() {
   probe_label=$1
   probe_stdout=$2
@@ -466,9 +598,22 @@ run_probe_command() {
   probe_first_failure=
   while :; do
     if run_with_timeout "$probe_timeout" "$probe_stdout" "$probe_stderr" /dev/null "$@"; then
-      return 0
+      probe_status=0
     else
       probe_status=$?
+    fi
+    case "$probe_label" in
+      version) probe_retained_name=probe-version.stderr ;;
+      features) probe_retained_name=probe-features.stderr ;;
+      exec-help) probe_retained_name=probe-exec-help.stderr ;;
+      *)
+        echo "zephyr codex dispatch: internal compatibility probe label is not allowed" >&2
+        return 1
+        ;;
+    esac
+    retain_diagnostic_file "$probe_stderr" "$probe_retained_name" "$probe_attempt"
+    if [ "$probe_status" -eq 0 ]; then
+      return 0
     fi
     if [ "$probe_status" -eq 124 ]; then
       probe_category=transport
@@ -721,8 +866,6 @@ run_runtime_smoke() {
   printf '%s\n' '{"type":"object","additionalProperties":false,"required":[],"properties":{}}' > "$smoke_schema"
   printf '%s\n' 'Return exactly one empty JSON object and do not call tools.' > "$smoke_prompt"
 
-  compatibility_profile=full
-  compatibility_omitted_config=none
   smoke_attempt_number=1
   smoke_first_failure=
   while :; do
@@ -732,6 +875,7 @@ run_runtime_smoke() {
     else
       smoke_status=$?
     fi
+    retain_smoke_attempt "$smoke_attempt_number"
     smoke_payload=
     if [ -f "$smoke_output" ]; then
       smoke_payload=$(tr -d '[:space:]' < "$smoke_output")
@@ -751,7 +895,7 @@ run_runtime_smoke() {
     smoke_bytes=$(wc -c < "$smoke_stderr" | tr -d ' ')
     smoke_diagnostic="category=$smoke_category status=$smoke_status stderr_sha256=$smoke_hash stderr_bytes=$smoke_bytes"
 
-    if [ "$compatibility_profile" = full ] && [ "$smoke_category" = config ]; then
+    if [ "$kind" = probe ] && [ "$compatibility_profile" = full ] && [ "$smoke_category" = config ]; then
       if ! compatibility_omitted_config=$(classify_config_option "$smoke_stderr"); then
         echo "zephyr codex dispatch: compatibility runtime smoke full failed without a safe portable configuration fallback; $smoke_diagnostic" >&2
         return 1
@@ -784,6 +928,9 @@ probe_compatibility() {
   features_stderr=$work_dir/codex-features.stderr
   help_file=$work_dir/codex-exec-help.txt
   help_stderr=$work_dir/codex-exec-help.stderr
+
+  compatibility_profile=full
+  compatibility_omitted_config=none
 
   run_probe_command version "$version_file" "$version_stderr" "$codex_path" --version || return 1
   run_probe_command features "$features_raw" "$features_stderr" "$codex_path" features list || return 1
@@ -926,6 +1073,18 @@ fi
 
 load_compatibility
 
+if [ "$kind" = smoke ]; then
+  if ! run_runtime_smoke; then
+    exit 1
+  fi
+  smoke_result=$work_dir/smoke-result.json
+  printf '%s\n' '{"kind":"smoke","status":"ok"}' > "$smoke_result"
+  chmod 600 "$smoke_result"
+  mv "$smoke_result" "$output"
+  printf '{"kind":"smoke","output":"%s"}\n' "$output"
+  exit 0
+fi
+
 if [ "$format_retry" = yes ]; then
   printf '%s' 'The previous response failed deterministic format validation. Return JSON only and conform to the supplied schema.' > "$retry_file"
 fi
@@ -997,21 +1156,29 @@ invoke_codex() {
 start_output_recovery() {
   rm -f -- "$events_pipe" "$events_file" "$recovery_stderr_file" "$recovered_message" "$codex_status_file"
   mkfifo "$events_pipe"
-  recovery_command='tee "$1" < "$2" | "$3" recover-codex-output --kind "$4" --input - --output "$5" >/dev/null || exit 1
-    attempts=0
-    while [ ! -s "$6" ] && [ "$attempts" -lt 100 ]; do sleep 0.1; attempts=$((attempts + 1)); done
-    [ "$(sed -n "1p" "$6" 2>/dev/null)" = 0 ] || exit 1
-    ln "$5" "$7"'
+  recovery_helper=$work_dir/recover-output.sh
+  if [ ! -f "$recovery_helper" ]; then
+    printf '%s\n' \
+      '#!/bin/sh' \
+      'set -eu' \
+      'tee "$1" < "$2" | "$3" recover-codex-output --kind "$4" --input - --output "$5" >/dev/null || exit 1' \
+      'attempts=0' \
+      'while [ ! -s "$6" ] && [ "$attempts" -lt 100 ]; do sleep 0.1; attempts=$((attempts + 1)); done' \
+      '[ "$(sed -n "1p" "$6" 2>/dev/null)" = 0 ] || exit 1' \
+      'ln "$5" "$7"' > "$recovery_helper"
+    chmod 700 "$recovery_helper"
+  fi
   if command -v setsid >/dev/null 2>&1; then
-    setsid sh -c "$recovery_command" sh "$events_file" "$events_pipe" "$zephyr_core_path" "$kind" "$recovered_message" "$codex_status_file" "$output" 2> "$recovery_stderr_file" &
+    setsid "$recovery_helper" "$events_file" "$events_pipe" "$zephyr_core_path" "$kind" "$recovered_message" "$codex_status_file" "$output" 2> "$recovery_stderr_file" &
   elif command -v perl >/dev/null 2>&1; then
     perl -MPOSIX=setsid -e 'setsid() or die "setsid: $!\n"; exec @ARGV or die "exec: $!\n"' \
-      sh -c "$recovery_command" sh "$events_file" "$events_pipe" "$zephyr_core_path" "$kind" "$recovered_message" "$codex_status_file" "$output" 2> "$recovery_stderr_file" &
+      "$recovery_helper" "$events_file" "$events_pipe" "$zephyr_core_path" "$kind" "$recovered_message" "$codex_status_file" "$output" 2> "$recovery_stderr_file" &
   else
     echo "zephyr codex dispatch: setsid or Perl with POSIX::setsid is required for structured output recovery" >&2
     exit 1
   fi
   recovery_pid=$!
+  active_recovery_group=$recovery_pid
 }
 
 attempt=1
@@ -1032,6 +1199,8 @@ while :; do
   else
     recovery_status=$?
   fi
+  active_recovery_group=
+  retain_dispatch_attempt "$attempt"
   if [ "$codex_status" -eq 0 ]; then
     if [ -s "$last_message" ] && [ -s "$output" ]; then
       if [ "$(hash_file "$last_message")" != "$(hash_file "$output")" ]; then

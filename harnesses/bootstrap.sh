@@ -9,7 +9,7 @@ usage: curl -fsSL <bootstrap-url> | sh
 
 Environment overrides:
   ZEPHYR_REPOSITORY_URL  Git repository to clone.
-  ZEPHYR_REF             Branch or tag to install. Defaults to master.
+  ZEPHYR_REF             Branch or tag to install. Defaults to main.
 EOF
 }
 
@@ -37,8 +37,8 @@ for required_command in git go make; do
   fi
 done
 
-repository_url=${ZEPHYR_REPOSITORY_URL:-ssh://git@stash.msk.avito.ru:7999/~ydkozhemyakin/zephyr.git}
-repository_ref=${ZEPHYR_REF:-master}
+repository_url=${ZEPHYR_REPOSITORY_URL:-https://github.com/signaturekey/zephyr.git}
+repository_ref=${ZEPHYR_REF:-main}
 temporary_parent=${TMPDIR:-/tmp}
 temporary_parent=${temporary_parent%/}
 bootstrap_root=$(mktemp -d "$temporary_parent/zephyr-bootstrap.XXXXXX")
@@ -60,4 +60,5 @@ git clone --quiet --depth 1 --branch "$repository_ref" "$repository_url" "$boots
 make -C "$bootstrap_root/repository" install
 
 echo "Установлены Zephyr CLI и пакет Codex."
+echo "Run zephyr-codex doctor before the first experimental review."
 echo "Начните новую сессию harness, чтобы загрузились установленный skill и agents."

@@ -14,6 +14,7 @@ Zephyr работает через Codex, не вызывает LLM API
 - [Что решает Zephyr](#overview)
 - [Чем он отличается от обычного AI-review](#difference)
 - [Быстрый старт](#quick-start)
+- [Экспериментальный local driver](#experimental-local-driver)
 - [Обновление и удаление](#maintenance)
 - [Как проходит ревью](#workflow)
 - [Режимы и Git scope](#modes)
@@ -102,6 +103,23 @@ reviewer-роли.
 zephyr version
 zephyr --help
 ```
+
+<a id="experimental-local-driver"></a>
+## Experimental local driver
+
+`zephyr-codex` — отдельный экспериментальный opt-in driver. Перед первым
+экспериментальным ревью выполните:
+
+```bash
+zephyr-codex doctor
+zephyr-codex review --repo /absolute/path/to/repository
+```
+
+Он поддерживает только локальное implementation review рабочего дерева. PR,
+планы, MCP и untracked content не поддерживаются. Обычные запросы Zephyr по
+планам, коду и PR продолжают использовать существующую skill choreography;
+driver не включается и не рекомендуется неявно. Эксперимент можно продвигать
+только после успешной приёмки на трёх Mac.
 
 <a id="maintenance"></a>
 ## Обновление и удаление
@@ -415,7 +433,9 @@ Probe сохраняет SHA-256 frozen policy в compatibility descriptor. По
 router, reviewers и evidence gate сверяют этот хеш, поэтому изменение policy
 файла уже после probe останавливает запуск.
 
-Встроенный профиль распределяет нагрузку так:
+Встроенный профиль распределяет модели по сложности стадии и запускает не
+более четырёх reviewer-ролей одновременно. Проектные overrides модели и effort
+по-прежнему поддерживаются; `collect` фиксирует их итог в frozen policy.
 
 | Участок | Default model / effort | Fast |
 |---|---|---|
@@ -423,7 +443,7 @@ router, reviewers и evidence gate сверяют этот хеш, поэтом�
 | `semantic_router`, `qa-expert`, `code-simplifier` | Terra / low | нет |
 | обычные reviewers | Terra / medium | нет |
 | `skill-authoring-expert` | Terra / medium | нет |
-| `reliability-expert`, `messaging-expert`, `infrastructure-expert`, `storage-expert`, `sql-expert` | Sol / high | нет |
+| `reliability-expert`, `messaging-expert`, `infrastructure-expert`, `storage-expert`, `sql-expert` | Sol / medium | нет |
 | `architect-reviewer`, `security-auditor` | Sol / high | нет |
 | `evidence_gate` | Sol / xhigh | нет |
 

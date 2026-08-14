@@ -12,17 +12,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoadDefaults(t *testing.T) {
+func TestLoadDefaultsUseFourParallelReviewers(t *testing.T) {
 	cfg, err := Load("")
 	require.NoError(t, err, "load defaults")
 
 	if cfg.Version != CurrentVersion || cfg.Profile != ProfileStandard || cfg.Language != "auto" {
 		t.Fatalf("unexpected defaults: version=%d profile=%q language=%q", cfg.Version, cfg.Profile, cfg.Language)
 	}
-	wantLimits := Limits{MaxParallelReviewers: 8, MaxRolesStandard: 17, MaxRolesThorough: 17, MaxFinalFindings: 30}
-	if cfg.Limits != wantLimits {
-		t.Fatalf("limits = %+v, want %+v", cfg.Limits, wantLimits)
-	}
+	wantLimits := Limits{MaxParallelReviewers: 4, MaxRolesStandard: 17, MaxRolesThorough: 17, MaxFinalFindings: 30}
+	assert.Equal(t, wantLimits, cfg.Limits)
 	for _, role := range KnownRoles() {
 		roleConfig, ok := cfg.Roles[role]
 		if !ok || !roleConfig.Enabled {

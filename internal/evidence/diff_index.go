@@ -14,11 +14,124 @@ type lineRange struct {
 	end   int
 }
 
+type diffHunk struct {
+	path  string
+	start int
+	end   int
+	text  string
+}
+
+func extractDiffHunks(diff string) []diffHunk {
+	type pendingHunk struct {
+		path       string
+		start, end int
+		textStart  int
+		header     string
+	}
+	var result []diffHunk
+	oldPath, newPath, currentPath := "", "", ""
+	fileHeaderStart := 0
+	fileHeader := ""
+	expectOldPath, expectNewPath := true, false
+	deleted := false
+	oldLine, newLine := 0, 0
+	var active *pendingHunk
+
+	finish := func(end int) {
+		if active == nil || active.end < active.start {
+			active = nil
+			return
+		}
+		result = append(result, diffHunk{path: active.path, start: active.start, end: active.end, text: active.header + diff[active.textStart:end]})
+		active = nil
+	}
+
+	for offset := 0; offset < len(diff); {
+		next := strings.IndexByte(diff[offset:], '\n')
+		lineEnd := len(diff)
+		if next >= 0 {
+			lineEnd = offset + next + 1
+		}
+		line := strings.TrimSuffix(diff[offset:lineEnd], "\n")
+		line = strings.TrimSuffix(line, "\r")
+
+		switch {
+		case strings.HasPrefix(line, "diff --git "):
+			finish(offset)
+			oldPath, newPath, currentPath = "", "", ""
+			deleted = false
+			fileHeader = ""
+			expectOldPath, expectNewPath = true, false
+		case expectOldPath && strings.HasPrefix(line, "--- "):
+			finish(offset)
+			oldPath = parsePatchPath(strings.TrimPrefix(line, "--- "), "a/")
+			fileHeaderStart = offset
+			fileHeader = ""
+			expectOldPath, expectNewPath = false, true
+		case expectNewPath && strings.HasPrefix(line, "+++ "):
+			newPath = parsePatchPath(strings.TrimPrefix(line, "+++ "), "b/")
+			deleted = newPath == "" && oldPath != ""
+			if deleted {
+				currentPath = oldPath
+			} else {
+				currentPath = newPath
+			}
+			fileHeader = diff[fileHeaderStart:lineEnd]
+			expectNewPath = false
+		case currentPath != "" && strings.HasPrefix(line, "@@ "):
+			finish(offset)
+			matches := hunkHeader.FindStringSubmatch(line)
+			if matches == nil {
+				break
+			}
+			var err error
+			oldLine, err = strconv.Atoi(matches[1])
+			if err != nil {
+				break
+			}
+			newLine, err = strconv.Atoi(matches[3])
+			if err != nil {
+				break
+			}
+			active = &pendingHunk{path: currentPath, start: chooseLine(deleted, oldLine, newLine), textStart: offset, header: fileHeader}
+		case active != nil && strings.HasPrefix(line, " "):
+			active.end = chooseLine(deleted, oldLine, newLine)
+			oldLine++
+			newLine++
+		case active != nil && strings.HasPrefix(line, "+"):
+			if !deleted {
+				active.end = newLine
+			}
+			newLine++
+		case active != nil && strings.HasPrefix(line, "-"):
+			if deleted {
+				active.end = oldLine
+			}
+			oldLine++
+		case active != nil && strings.HasPrefix(line, `\ No newline at end of file`):
+		default:
+			expectNewPath = false
+			finish(offset)
+		}
+		offset = lineEnd
+	}
+	finish(len(diff))
+	return result
+}
+
+func chooseLine(deleted bool, oldLine, newLine int) int {
+	if deleted {
+		return oldLine
+	}
+	return newLine
+}
+
 func diffLineIndex(diff string) map[string][]lineRange {
 	linesByPath := make(map[string]map[int]struct{})
 	oldPath := ""
 	newPath := ""
 	currentPath := ""
+	expectOldPath, expectNewPath := true, false
 	oldLine := 0
 	newLine := 0
 	deleted := false
@@ -39,10 +152,12 @@ func diffLineIndex(diff string) map[string][]lineRange {
 		case strings.HasPrefix(line, "diff --git "):
 			oldPath, newPath, currentPath = "", "", ""
 			inHunk = false
-		case strings.HasPrefix(line, "--- "):
+			expectOldPath, expectNewPath = true, false
+		case expectOldPath && strings.HasPrefix(line, "--- "):
 			oldPath = parsePatchPath(strings.TrimPrefix(line, "--- "), "a/")
 			inHunk = false
-		case strings.HasPrefix(line, "+++ "):
+			expectOldPath, expectNewPath = false, true
+		case (expectNewPath || currentPath == "") && strings.HasPrefix(line, "+++ "):
 			newPath = parsePatchPath(strings.TrimPrefix(line, "+++ "), "b/")
 			deleted = newPath == "" && oldPath != ""
 			if deleted {
@@ -51,6 +166,7 @@ func diffLineIndex(diff string) map[string][]lineRange {
 				currentPath = newPath
 			}
 			inHunk = false
+			expectNewPath = false
 		case currentPath != "" && strings.HasPrefix(line, "@@ "):
 			matches := hunkHeader.FindStringSubmatch(line)
 			if matches == nil {
@@ -85,6 +201,9 @@ func diffLineIndex(diff string) map[string][]lineRange {
 			oldLine++
 		case inHunk && strings.HasPrefix(line, `\ No newline at end of file`):
 		default:
+			if currentPath != "" {
+				expectNewPath = false
+			}
 			inHunk = false
 		}
 	}

@@ -50,7 +50,7 @@ model_policy:
       effort: xhigh
 
 limits:
-  max_parallel_reviewers: 8
+  max_parallel_reviewers: 4
   max_roles_standard: 17
   max_roles_thorough: 17
   max_final_findings: 30

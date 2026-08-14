@@ -1,4 +1,4 @@
-package codexoutput
+package output
 
 import (
 	"strings"
@@ -50,48 +50,11 @@ func TestRecoverStructuredOutputFailsClosed(t *testing.T) {
 		events []string
 		want   string
 	}{
-		{
-			name: "missing completed turn",
-			events: []string{
-				`{"type":"item.completed","item":{"type":"agent_message","text":` + quoteJSON(valid) + `}}`,
-			},
-			want: "exactly one completed turn",
-		},
-		{
-			name: "multiple messages",
-			events: []string{
-				`{"type":"item.completed","item":{"type":"agent_message","text":` + quoteJSON(valid) + `}}`,
-				`{"type":"item.completed","item":{"type":"agent_message","text":` + quoteJSON(valid) + `}}`,
-				`{"type":"turn.completed"}`,
-			},
-			want: "exactly one agent message",
-		},
-		{
-			name: "error after message",
-			events: []string{
-				`{"type":"item.completed","item":{"type":"agent_message","text":` + quoteJSON(valid) + `}}`,
-				`{"type":"item.completed","item":{"type":"error","message":"terminal failure"}}`,
-				`{"type":"turn.completed"}`,
-			},
-			want: "error event after agent message",
-		},
-		{
-			name: "invalid envelope",
-			events: []string{
-				`{"type":"item.completed","item":{"type":"agent_message","text":"{}"}}`,
-				`{"type":"turn.completed"}`,
-			},
-			want: "validate recovered reviewer output",
-		},
-		{
-			name: "trailing malformed event",
-			events: []string{
-				`{"type":"item.completed","item":{"type":"agent_message","text":` + quoteJSON(valid) + `}}`,
-				`{"type":"turn.completed"}`,
-				`not-json`,
-			},
-			want: "decode event",
-		},
+		{name: "missing completed turn", events: []string{`{"type":"item.completed","item":{"type":"agent_message","text":` + quoteJSON(valid) + `}}`}, want: "exactly one completed turn"},
+		{name: "multiple messages", events: []string{`{"type":"item.completed","item":{"type":"agent_message","text":` + quoteJSON(valid) + `}}`, `{"type":"item.completed","item":{"type":"agent_message","text":` + quoteJSON(valid) + `}}`, `{"type":"turn.completed"}`}, want: "exactly one agent message"},
+		{name: "error after message", events: []string{`{"type":"item.completed","item":{"type":"agent_message","text":` + quoteJSON(valid) + `}}`, `{"type":"item.completed","item":{"type":"error","message":"terminal failure"}}`, `{"type":"turn.completed"}`}, want: "error event after agent message"},
+		{name: "invalid envelope", events: []string{`{"type":"item.completed","item":{"type":"agent_message","text":"{}"}}`, `{"type":"turn.completed"}`}, want: "validate recovered reviewer output"},
+		{name: "trailing malformed event", events: []string{`{"type":"item.completed","item":{"type":"agent_message","text":` + quoteJSON(valid) + `}}`, `{"type":"turn.completed"}`, `not-json`}, want: "decode event"},
 	}
 
 	for _, test := range tests {

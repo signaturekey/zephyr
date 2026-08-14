@@ -1,4 +1,4 @@
-package codexoutput
+package output
 
 import (
 	"bufio"

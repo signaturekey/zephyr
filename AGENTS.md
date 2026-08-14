@@ -348,6 +348,8 @@ Before the evidence gate, reject or classify malformed candidates, including:
 
 The evidence gate receives the exact prechecked candidate set, the minimum required packet evidence, and the verdict schema. It is not a reviewer and may not search for or create findings.
 
+Before dispatching the evidence gate for an implementation review, the core writes `evidence/minimal.json` through `zephyr prepare-evidence --run "$RUN_ID"`. It contains only prechecked candidate IDs, locations, and the exact frozen diff hunks overlapping those locations; it contains no plan, business context, project instructions, whole packet, or unrelated diff content.
+
 It may accept, reject, downgrade, mark duplicate, or request human review. It may never raise severity or rewrite one claim into another.
 
 ### 6.11 Verdict integrity and aggregation
@@ -461,7 +463,7 @@ Rules:
 - evidence-gate is outside the reviewer limit and runs once;
 - max_parallel_reviewers controls concurrency, not total coverage.
 
-Current defaults allow all 17 reviewer roles in both standard and thorough profiles and execute up to 8 concurrently. These are configuration defaults, not a hard-coded product ceiling.
+Current defaults use Luna for the probe, Terra for routing and general review, and Sol for specialist and evidence stages. Both standard and thorough profiles allow all 17 reviewer roles and execute up to 4 concurrently. Project model and effort overrides remain supported and are frozen by `collect`. These are configuration defaults, not a hard-coded product ceiling.
 
 Default path and signal routing includes:
 
@@ -671,6 +673,7 @@ zephyr route
 zephyr validate-routing
 zephyr fallback-routing
 zephyr validate-candidates
+zephyr prepare-evidence
 zephyr validate-verdicts
 zephyr mark-failed
 zephyr aggregate
@@ -740,6 +743,8 @@ Zero findings from zero validated reviewer roles are statistically meaningless a
 Zephyr uses trace.json as its persistent structured operational log. Each event records a stage, started/completed/failed/partial status, UTC timestamps, duration, safe metadata, and a sanitized error. Writes are atomic and use restrictive permissions.
 
 Do not persist chain-of-thought, raw secrets, unrestricted process stderr, or full sensitive payloads. User-facing diagnostics may include a safe classification and fingerprint that allows repeated failures to be correlated without exposing private content.
+
+The explicit `--keep-private-diagnostics` mode is the narrow exception for debugging a user-authorized run: it may retain only the dispatcher's bounded allowlist of raw stderr and event files in a mode-0700 private operation directory, must display a sensitive-data warning, and must never copy those files into `trace.json`, safe `diagnostics.json`, or user-facing output.
 
 ### 14.3 Failure matrix
 

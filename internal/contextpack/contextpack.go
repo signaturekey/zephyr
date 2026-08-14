@@ -826,10 +826,6 @@ func isPythonPath(lower string) bool {
 	return strings.HasSuffix(lower, ".py") || base == "pyproject.toml" || strings.HasPrefix(base, "requirements") && strings.HasSuffix(base, ".txt") || base == "poetry.lock" || base == "uv.lock"
 }
 
-// detectStrongRoutingSignals limits deterministic protection to signals derived
-// from the changed paths or diff. Plan and business-context prose remains input
-// to semantic routing and cannot protect a role merely because it contains a
-// matching word.
 func detectStrongRoutingSignals(packet Packet) []string {
 	strong := packet
 	strong.Mode = ""

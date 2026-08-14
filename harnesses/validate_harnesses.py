@@ -84,6 +84,21 @@ def validate_roles() -> None:
             fail(f"evidence gate is missing {phrase!r}")
 
 
+def validate_bootstrap_defaults() -> None:
+    path = ROOT / "harnesses/bootstrap.sh"
+    text = path.read_text(encoding="utf-8")
+    required = (
+        "repository_url=${ZEPHYR_REPOSITORY_URL:-https://github.com/signaturekey/zephyr.git}",
+        "repository_ref=${ZEPHYR_REF:-main}",
+    )
+    for assignment in required:
+        if assignment not in text:
+            fail(f"{path}: missing bootstrap default {assignment!r}")
+    for forbidden in ("master", "ydkozhemyakin/zephyr.git"):
+        if forbidden in text:
+            fail(f"{path}: contains obsolete bootstrap default {forbidden!r}")
+
+
 def validate_reviewer_role_contract() -> None:
     config_text = (ROOT / "internal/config/config.go").read_text(encoding="utf-8")
     constants = dict(re.findall(r"(?m)^\s*(Role[A-Za-z0-9]+)\s*=\s*\"([^\"]+)\"", config_text))
@@ -397,10 +412,42 @@ def validate_installers() -> None:
         fail("uninstaller must preserve modified or foreign files")
 
     uninstall_cli_text = cli_uninstaller.read_text(encoding="utf-8")
+    for phrase in (
+        "github.com/signaturekey/zephyr/cmd/zephyr",
+        "github.com/signaturekey/zephyr/cmd/zephyr-codex",
+        "refusing to remove a CLI that is not built from",
+        "refusing to remove an incomplete Zephyr CLI pair",
+    ):
+        if phrase not in uninstall_cli_text:
+            fail(f"CLI uninstaller is missing pair provenance element {phrase!r}")
+
+    build_pair = ROOT / "harnesses/build-cli-pair.sh"
+    if not build_pair.is_file():
+        fail("CLI pair builder is missing")
+    build_pair_text = build_pair.read_text(encoding="utf-8")
+    for phrase in (
+        "same canonical parent",
+        "mktemp -d",
+        "ZEPHYR_BUILD_PAIR_FAIL_BUILD_SECOND",
+        "ZEPHYR_BUILD_PAIR_FAIL_PUBLISH_SECOND",
+        "previous outputs restored",
+        "codex_harness_api_version",
+    ):
+        if phrase not in build_pair_text:
+            fail(f"CLI pair builder is missing transaction element {phrase!r}")
+    build_syntax = subprocess.run(["sh", "-n", str(build_pair)], check=False, capture_output=True, text=True)
+    if build_syntax.returncode != 0:
+        fail(f"{build_pair}: shell syntax check failed: {build_syntax.stderr.strip()}")
+
+    bootstrap_text = bootstrap.read_text(encoding="utf-8")
+    if "Run zephyr-codex doctor before the first experimental review." not in install_text:
+        fail("installer must print the experimental-driver preflight reminder")
+    if "Run zephyr-codex doctor before the first experimental review." not in bootstrap_text:
+        fail("bootstrap must print the experimental-driver preflight reminder")
+
     if "refusing to remove a CLI that is not built from" not in uninstall_cli_text:
         fail("CLI uninstaller must preserve foreign binaries")
 
-    bootstrap_text = bootstrap.read_text(encoding="utf-8")
     for phrase in (
         "ZEPHYR_REPOSITORY_URL",
         "ZEPHYR_REF",
@@ -477,6 +524,117 @@ def validate_installers() -> None:
             fail(f"Makefile is missing update contract {phrase!r}")
 
     validate_updater_behavior()
+    validate_cli_pair_behavior()
+
+
+def validate_cli_pair_behavior() -> None:
+    with tempfile.TemporaryDirectory(prefix="zephyr-cli-pair-", dir=Path(tempfile.gettempdir()).resolve()) as temporary:
+        root = Path(temporary)
+        outputs = root / "outputs"
+        gobin = root / "gobin"
+        outputs.mkdir()
+        gobin.mkdir()
+        core = outputs / "zephyr"
+        codex = outputs / "zephyr-codex"
+        environment = os.environ.copy()
+        environment["GOBIN"] = str(gobin)
+
+        fake_bin = root / "fake-bin"
+        fake_bin.mkdir()
+        fake_calls = root / "codex-calls"
+        fake_codex = fake_bin / "codex"
+        fake_codex.write_text(
+            "#!/bin/sh\nprintf 'unexpected Codex invocation\\n' >> \"$ZEPHYR_FAKE_CODEX_CALLS\"\nexit 99\n",
+            encoding="utf-8",
+        )
+        fake_codex.chmod(0o700)
+        harness_environment = environment.copy()
+        harness_environment.update(
+            {
+                "PATH": f"{fake_bin}:{harness_environment.get('PATH', '')}",
+                "ZEPHYR_FAKE_CODEX_CALLS": str(fake_calls),
+                "ZEPHYR_CODEX_SKILLS_DIR": str(root / "skills"),
+                "ZEPHYR_CODEX_AGENTS_DIR": str(root / "agents"),
+            }
+        )
+        harness_install = subprocess.run(
+            ["sh", str(ROOT / "harnesses/install.sh")], cwd=ROOT, check=False, capture_output=True, text=True, env=harness_environment,
+        )
+        if harness_install.returncode != 0 or "Run zephyr-codex doctor before the first experimental review." not in harness_install.stdout:
+            fail(f"installer did not print experimental-driver reminder: {harness_install.stderr.strip()}")
+        if fake_calls.exists():
+            fail("installation invoked Codex or spent a model call")
+
+        build = subprocess.run(
+            ["make", "build", f"CORE_BINARY={core}", f"CODEX_BINARY={codex}"],
+            cwd=ROOT, check=False, capture_output=True, text=True, env=environment,
+        )
+        if build.returncode != 0 or not (core.is_file() and codex.is_file()):
+            fail(f"make build did not create both CLIs: {build.stderr.strip()}")
+        if not os.access(core, os.X_OK) or not os.access(codex, os.X_OK):
+            fail("make build did not publish executable CLIs")
+
+        before_core, before_codex = core.read_bytes(), codex.read_bytes()
+        failed_build_environment = environment.copy()
+        failed_build_environment["ZEPHYR_BUILD_PAIR_FAIL_BUILD_SECOND"] = "1"
+        failed_build = subprocess.run(
+            ["make", "build", f"CORE_BINARY={core}", f"CODEX_BINARY={codex}"],
+            cwd=ROOT, check=False, capture_output=True, text=True, env=failed_build_environment,
+        )
+        if failed_build.returncode == 0 or core.read_bytes() != before_core or codex.read_bytes() != before_codex:
+            fail("second-build failure changed a published CLI")
+
+        failed_publish_environment = environment.copy()
+        failed_publish_environment["ZEPHYR_BUILD_PAIR_FAIL_PUBLISH_SECOND"] = "1"
+        failed_publish = subprocess.run(
+            ["make", "build", f"CORE_BINARY={core}", f"CODEX_BINARY={codex}"],
+            cwd=ROOT, check=False, capture_output=True, text=True, env=failed_publish_environment,
+        )
+        if failed_publish.returncode == 0 or core.read_bytes() != before_core or codex.read_bytes() != before_codex:
+            fail("second-publication failure did not restore both prior CLIs")
+
+        codex.unlink()
+        codex.mkdir()
+        rejected_nonregular = subprocess.run(
+            ["make", "build", f"CORE_BINARY={core}", f"CODEX_BINARY={codex}"],
+            cwd=ROOT, check=False, capture_output=True, text=True, env=environment,
+        )
+        if rejected_nonregular.returncode == 0:
+            fail("CLI pair builder accepted a non-regular second destination")
+        if not core.is_file() or core.read_bytes() != before_core or not codex.is_dir():
+            fail("non-regular second destination displaced the first published CLI")
+        codex.rmdir()
+        restored_pair = subprocess.run(
+            ["make", "build", f"CORE_BINARY={core}", f"CODEX_BINARY={codex}"],
+            cwd=ROOT, check=False, capture_output=True, text=True, env=environment,
+        )
+        if restored_pair.returncode != 0:
+            fail(f"could not recreate CLI pair after non-regular-target regression: {restored_pair.stderr.strip()}")
+
+        install = subprocess.run(["make", "install-cli"], cwd=ROOT, check=False, capture_output=True, text=True, env=environment)
+        installed_core, installed_codex = gobin / "zephyr", gobin / "zephyr-codex"
+        if install.returncode != 0 or not installed_core.is_file() or not installed_codex.is_file():
+            fail(f"make install-cli did not install both CLIs: {install.stderr.strip()}")
+
+        installed_codex.unlink()
+        installed_codex.symlink_to(root / "foreign-zephyr-codex")
+        rejected = subprocess.run(
+            ["sh", str(ROOT / "harnesses/uninstall-cli.sh")],
+            cwd=ROOT, check=False, capture_output=True, text=True, env=environment,
+        )
+        if rejected.returncode == 0 or not installed_core.exists() or not installed_codex.is_symlink():
+            fail("foreign zephyr-codex did not prevent all CLI deletion")
+
+        installed_codex.unlink()
+        reinstall = subprocess.run(["make", "install-cli"], cwd=ROOT, check=False, capture_output=True, text=True, env=environment)
+        if reinstall.returncode != 0:
+            fail(f"could not recreate CLI pair for uninstall: {reinstall.stderr.strip()}")
+        removed = subprocess.run(
+            ["sh", str(ROOT / "harnesses/uninstall-cli.sh")],
+            cwd=ROOT, check=False, capture_output=True, text=True, env=environment,
+        )
+        if removed.returncode != 0 or installed_core.exists() or installed_codex.exists():
+            fail(f"provenance-safe CLI uninstall did not remove both binaries: {removed.stderr.strip()}")
 
 
 def validate_updater_behavior() -> None:
@@ -669,6 +827,13 @@ def validate_codex_dispatcher() -> None:
     dispatcher = ROOT / "harnesses/codex/dispatch.sh"
     with tempfile.TemporaryDirectory(prefix="zephyr-dispatch-test-") as temporary:
         root = Path(temporary)
+        core = root / "zephyr"
+        subprocess.run(
+            ["go", "build", "-o", str(core), "./cmd/zephyr"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        )
         packet = root / "review-packet.json"
         packet_bytes = b'{"version":1,"run_id":"run-1","payload":"' + (b"x" * 200_000) + b'"}\n'
         packet.write_bytes(packet_bytes)
@@ -683,6 +848,9 @@ def validate_codex_dispatcher() -> None:
         fake_codex.write_text(
             """#!/bin/sh
 set -eu
+if [ -n "${ZEPHYR_FAKE_INVOCATIONS:-}" ]; then
+  printf '%s\\n' "$*" >> "$ZEPHYR_FAKE_INVOCATIONS"
+fi
 case "$1" in
   --version)
     [ "$#" -eq 1 ]
@@ -801,6 +969,37 @@ esac
       exit 0
     fi
     ;;
+  smoke-auth)
+    if [ "$is_smoke" = yes ]; then
+      echo "authentication failed: private smoke credential" >&2
+      exit 1
+    fi
+    ;;
+  smoke-config)
+    if [ "$is_smoke" = yes ]; then
+      echo "invalid configuration: private smoke configuration" >&2
+      exit 2
+    fi
+    ;;
+  smoke-delay)
+    if [ "$is_smoke" = yes ]; then
+      sleep 0.2
+    fi
+    ;;
+  smoke-signal)
+    if [ "$is_smoke" = yes ]; then
+      trap '' TERM
+      (
+        trap '' TERM
+        while :; do
+          sleep 30 &
+          wait "$!"
+        done
+      ) &
+      printf '%s\\n' "$!" > "$ZEPHYR_FAKE_CHILD_PID"
+      wait "$!"
+    fi
+    ;;
   auth)
     if [ "$is_smoke" = no ]; then
       echo "authentication failed: private diagnostic" >&2
@@ -848,12 +1047,42 @@ printf '{}\\n' > "$output"
         environment.update(
             {
                 "ZEPHYR_CODEX_BIN": str(fake_codex),
+                "ZEPHYR_CORE_BIN": str(core),
                 "ZEPHYR_FAKE_CAPTURE": str(capture),
                 "ZEPHYR_FAKE_ARGUMENTS": str(arguments),
                 "ZEPHYR_FAKE_HOME_CAPTURE": str(home_capture),
                 "CODEX_HOME": str(source_home),
             }
         )
+
+        old_core = root / "zephyr-old-core"
+        old_core.write_text(
+            "#!/bin/sh\n"
+            "[ \"${1:-}\" = version ] || exit 64\n"
+            "printf '%s\\n' '{\"version\":\"old\",\"protocol_version\":1}'\n",
+            encoding="utf-8",
+        )
+        old_core.chmod(0o700)
+        old_core_invocations = root / "old-core-codex-invocations.txt"
+        old_core_environment = environment.copy()
+        old_core_environment.update(
+            {
+                "ZEPHYR_CORE_BIN": str(old_core),
+                "ZEPHYR_FAKE_INVOCATIONS": str(old_core_invocations),
+            }
+        )
+        old_core_probe = subprocess.run(
+            ["sh", str(dispatcher), "probe", "--output", str(root / "old-core-compatibility.txt")],
+            check=False,
+            capture_output=True,
+            env=old_core_environment,
+        )
+        if old_core_probe.returncode == 0:
+            fail("dispatcher accepted a core without Codex harness API v2")
+        if b"core-version-mismatch" not in old_core_probe.stderr:
+            fail("dispatcher did not classify the old core as core-version-mismatch")
+        if old_core_invocations.exists() and old_core_invocations.read_text(encoding="utf-8").strip():
+            fail("dispatcher invoked Codex before rejecting the old core")
         policy = root / "model-policy.txt"
         policy_lines = [
             "zephyr-codex-model-policy-v1",
@@ -875,6 +1104,182 @@ printf '{}\\n' > "$output"
         )
         if probe.returncode != 0:
             fail(f"Codex compatibility probe failed: {probe.stderr.decode(errors='replace').strip()}")
+
+        smoke_invocations = root / "smoke-invocations.txt"
+        smoke_arguments = root / "smoke-arguments.txt"
+        smoke_output = root / "smoke.json"
+        smoke_environment = environment.copy()
+        smoke_environment.update(
+            {
+                "ZEPHYR_FAKE_INVOCATIONS": str(smoke_invocations),
+                "ZEPHYR_FAKE_ARGUMENTS": str(smoke_arguments),
+            }
+        )
+        smoke = subprocess.run(
+            [
+                "sh", str(dispatcher), "smoke", "--compat", str(compatibility),
+                "--policy", str(policy), "--output", str(smoke_output),
+            ],
+            check=False,
+            capture_output=True,
+            env=smoke_environment,
+        )
+        if smoke.returncode != 0:
+            fail(f"dedicated Codex smoke failed: {smoke.stderr.decode(errors='replace').strip()}")
+        if smoke_output.read_bytes() != b'{"kind":"smoke","status":"ok"}\n':
+            fail("dedicated Codex smoke did not atomically publish the fixed success payload")
+        if smoke_output.stat().st_mode & 0o777 != 0o600:
+            fail("dedicated Codex smoke output is not mode 0600")
+        smoke_calls = smoke_invocations.read_text(encoding="utf-8").splitlines()
+        if len(smoke_calls) != 1 or not smoke_calls[0].startswith("exec "):
+            fail("dedicated Codex smoke reran frozen version, feature, or help probes")
+        smoke_argv = smoke_arguments.read_text(encoding="utf-8").splitlines()
+        for required in (
+            "--strict-config",
+            "--ignore-user-config",
+            "--ignore-rules",
+            "--ephemeral",
+            "read-only",
+            'approval_policy="never"',
+            'mcp_servers={}',
+            "gpt-5.6-luna",
+            'model_reasoning_effort="low"',
+            'service_tier="fast"',
+        ):
+            if required not in smoke_argv:
+                fail(f"dedicated Codex smoke omitted isolated probe-policy argument {required!r}")
+
+        fake_bin = root / "fake-bin"
+        fake_bin.mkdir()
+        fake_sleep_log = root / "smoke-sleep.txt"
+        fake_sleep = fake_bin / "sleep"
+        fake_sleep.write_text(
+            "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$ZEPHYR_FAKE_SLEEP_LOG\"\nexec /bin/sleep \"$@\"\n",
+            encoding="utf-8",
+        )
+        fake_sleep.chmod(0o700)
+        timeout_environment = smoke_environment.copy()
+        timeout_environment["PATH"] = f"{fake_bin}:{timeout_environment.get('PATH', '')}"
+        timeout_environment["ZEPHYR_FAKE_SLEEP_LOG"] = str(fake_sleep_log)
+        timeout_environment["ZEPHYR_FAKE_MODE"] = "smoke-delay"
+        timeout_output = root / "smoke-default-timeout.json"
+        timeout_smoke = subprocess.run(
+            [
+                "sh", str(dispatcher), "smoke", "--compat", str(compatibility),
+                "--policy", str(policy), "--output", str(timeout_output),
+            ],
+            check=False,
+            capture_output=True,
+            env=timeout_environment,
+        )
+        if timeout_smoke.returncode != 0 or "60" not in fake_sleep_log.read_text(encoding="utf-8").splitlines():
+            fail("dedicated Codex smoke does not use the 60-second default timeout")
+
+        for mode, category in (("smoke-auth", "auth"), ("smoke-config", "config")):
+            failure_count = root / f"{mode}-count.txt"
+            failure_output = root / f"{mode}.json"
+            failure_environment = environment.copy()
+            failure_environment.update({"ZEPHYR_FAKE_MODE": mode, "ZEPHYR_FAKE_COUNT": str(failure_count)})
+            failure = subprocess.run(
+                [
+                    "sh", str(dispatcher), "smoke", "--compat", str(compatibility),
+                    "--policy", str(policy), "--output", str(failure_output),
+                ],
+                check=False,
+                capture_output=True,
+                env=failure_environment,
+            )
+            failure_stderr = failure.stderr.decode(errors="replace")
+            if failure.returncode == 0 or failure_output.exists() or failure_count.read_text(encoding="utf-8").strip() != "1":
+                fail(f"dedicated Codex smoke did not fail fast for {category}")
+            diagnostic_lines = [line for line in failure_stderr.splitlines() if "category=" in line]
+            if len(diagnostic_lines) != 1 or f"category={category}" not in diagnostic_lines[0] or "stderr_sha256=" not in diagnostic_lines[0] or "stderr_bytes=" not in diagnostic_lines[0]:
+                fail(f"dedicated Codex smoke lacks one safe {category} diagnostic line")
+            if "private smoke" in failure_stderr:
+                fail(f"dedicated Codex smoke leaked raw {category} stderr")
+
+        transient_count = root / "dedicated-smoke-retry-count.txt"
+        transient_output = root / "dedicated-smoke-retry.json"
+        transient_environment = environment.copy()
+        transient_environment.update({"ZEPHYR_FAKE_MODE": "smoke-transient", "ZEPHYR_FAKE_COUNT": str(transient_count)})
+        transient = subprocess.run(
+            [
+                "sh", str(dispatcher), "smoke", "--compat", str(compatibility),
+                "--policy", str(policy), "--output", str(transient_output),
+            ],
+            check=False,
+            capture_output=True,
+            env=transient_environment,
+        )
+        if transient.returncode != 0 or transient_count.read_text(encoding="utf-8").strip() != "2":
+            fail("dedicated Codex smoke did not perform exactly one transient retry")
+
+        drift_invocations = root / "smoke-drift-invocations.txt"
+        drift_cases: list[tuple[str, Path, Path | None, dict[str, str]]] = []
+        changed_smoke_codex = root / "codex-smoke-changed"
+        changed_smoke_codex.write_text(fake_codex.read_text(encoding="utf-8") + "\n# drift\n", encoding="utf-8")
+        changed_smoke_codex.chmod(0o700)
+        drift_cases.append(("binary", compatibility, policy, {"ZEPHYR_CODEX_BIN": str(changed_smoke_codex)}))
+        smoke_changed_policy = root / "smoke-policy-changed.txt"
+        smoke_changed_policy.write_bytes(policy.read_bytes().replace(b"gpt-5.6-luna", b"gpt-5.6-terra", 1))
+        drift_cases.append(("policy", compatibility, smoke_changed_policy, {}))
+        smoke_feature_drift = root / "smoke-feature-drift.txt"
+        smoke_feature_drift.write_bytes(compatibility.read_bytes().replace(b"apps=true", b"apps=false", 1))
+        drift_cases.append(("feature", smoke_feature_drift, policy, {}))
+        smoke_descriptor_drift = root / "smoke-descriptor-drift.txt"
+        smoke_descriptor_drift.write_bytes(compatibility.read_bytes().replace(b"profile=full", b"profile=portable", 1))
+        drift_cases.append(("descriptor", smoke_descriptor_drift, policy, {}))
+        for label, descriptor, selected_policy, overrides in drift_cases:
+            drift_invocations.unlink(missing_ok=True)
+            drift_output = root / f"smoke-{label}-drift.json"
+            drift_environment = environment.copy()
+            drift_environment["ZEPHYR_FAKE_INVOCATIONS"] = str(drift_invocations)
+            drift_environment.update(overrides)
+            command = ["sh", str(dispatcher), "smoke", "--compat", str(descriptor)]
+            if selected_policy is not None:
+                command.extend(["--policy", str(selected_policy)])
+            command.extend(["--output", str(drift_output)])
+            drift = subprocess.run(command, check=False, capture_output=True, env=drift_environment)
+            calls = drift_invocations.read_text(encoding="utf-8").splitlines() if drift_invocations.exists() else []
+            if drift.returncode == 0 or drift_output.exists() or any(call.startswith("exec ") for call in calls):
+                fail(f"dedicated Codex smoke called the model after {label} drift")
+
+        signal_output = root / "smoke-signal.json"
+        signal_child_pid = root / "smoke-signal-child.pid"
+        signal_environment = environment.copy()
+        signal_environment.update({"ZEPHYR_FAKE_MODE": "smoke-signal", "ZEPHYR_FAKE_CHILD_PID": str(signal_child_pid)})
+        signal_process = subprocess.Popen(
+            [
+                "sh", str(dispatcher), "smoke", "--compat", str(compatibility),
+                "--policy", str(policy), "--output", str(signal_output),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=signal_environment,
+        )
+        for _ in range(100):
+            if signal_child_pid.exists():
+                break
+            if signal_process.poll() is not None:
+                fail("dedicated Codex smoke exited before SIGTERM test reached its descendant")
+            time.sleep(0.02)
+        else:
+            signal_process.kill()
+            fail("dedicated Codex smoke did not start its TERM-ignoring descendant")
+        child_pid = int(signal_child_pid.read_text(encoding="utf-8").strip())
+        signal_process.terminate()
+        signal_process.communicate(timeout=8)
+        for _ in range(40):
+            try:
+                os.kill(child_pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
+        else:
+            os.kill(child_pid, 9)
+            fail("SIGTERM left the dedicated smoke descendant running")
+        if signal_output.exists():
+            fail("SIGTERM published a dedicated smoke output artifact")
         result = subprocess.run(
             [
                 "sh",
@@ -1652,6 +2057,125 @@ printf '{}\\n' > "$output"
         if "category=sandbox" not in sandbox_stderr:
             fail("dispatcher sandbox failure lacks a safe category")
 
+        invalid_diagnostics_cases: list[tuple[str, str]] = []
+        relative_diagnostics = Path("relative-private-diagnostics")
+        invalid_diagnostics_cases.append(("relative", str(relative_diagnostics)))
+        missing_diagnostics = root / "missing-private-diagnostics"
+        invalid_diagnostics_cases.append(("missing", str(missing_diagnostics)))
+        open_diagnostics = root / "open-private-diagnostics"
+        open_diagnostics.mkdir(mode=0o755)
+        open_diagnostics.chmod(0o755)
+        invalid_diagnostics_cases.append(("mode", str(open_diagnostics)))
+        valid_diagnostics_target = root / "valid-private-diagnostics-target"
+        valid_diagnostics_target.mkdir(mode=0o700)
+        linked_diagnostics = root / "linked-private-diagnostics"
+        linked_diagnostics.symlink_to(valid_diagnostics_target, target_is_directory=True)
+        invalid_diagnostics_cases.append(("symlink", str(linked_diagnostics)))
+        for label, diagnostics_path in invalid_diagnostics_cases:
+            before_work_dirs = set(root.glob(".zephyr-codex-dispatch.*"))
+            invalid_output = root / f"invalid-private-diagnostics-{label}.json"
+            invalid_result = subprocess.run(
+                [
+                    "sh", str(dispatcher), "smoke", "--compat", str(compatibility),
+                    "--policy", str(policy), "--output", str(invalid_output),
+                    "--private-diagnostics-dir", diagnostics_path,
+                ],
+                check=False,
+                capture_output=True,
+                env=environment,
+            )
+            if invalid_result.returncode == 0 or invalid_output.exists():
+                fail(f"dispatcher accepted {label} private diagnostics destination")
+            if set(root.glob(".zephyr-codex-dispatch.*")) != before_work_dirs:
+                fail(f"dispatcher created a work directory before rejecting {label} private diagnostics")
+
+        prechecked = root / "prechecked.json"
+        prechecked.write_text('{"version":1,"run_id":"run-1","candidates":[]}\n', encoding="utf-8")
+        minimal_evidence = root / "minimal-evidence.json"
+        minimal_evidence.write_text('{"version":1,"run_id":"run-1","candidates":[]}\n', encoding="utf-8")
+
+        retention_commands = {
+            "probe": ["probe", "--policy", str(policy)],
+            "smoke": ["smoke", "--compat", str(compatibility), "--policy", str(policy)],
+            "routing": [
+                "routing", "--packet", str(packet), "--request", str(request),
+                "--compat", str(compatibility), "--policy", str(policy),
+            ],
+            "reviewer-code-reviewer": [
+                "reviewer", "--role", "code-reviewer", "--packet", str(packet),
+                "--compat", str(compatibility), "--policy", str(policy),
+            ],
+            "evidence": [
+                "evidence", "--prechecked", str(prechecked), "--evidence", str(minimal_evidence),
+                "--compat", str(compatibility), "--policy", str(policy),
+            ],
+        }
+        allowed_diagnostic_name = re.compile(
+            r"^(stderr\.log|events\.jsonl|recovery-stderr\.log|smoke-stderr\.log|smoke-events\.jsonl|probe-[a-z0-9-]+\.stderr)$"
+        )
+        forbidden_diagnostic_names = {
+            "prompt.txt",
+            "retry-directive.txt",
+            "last-message.json",
+            "compatibility.txt",
+            "compatibility-payload.txt",
+            "codex-home",
+            "auth.json",
+        }
+        for component, command_args in retention_commands.items():
+            diagnostics_root = root / f"private-{component}"
+            diagnostics_root.mkdir(mode=0o700)
+            retained_output = root / f"retained-{component}.json"
+            retained = subprocess.run(
+                [
+                    "sh", str(dispatcher), *command_args, "--output", str(retained_output),
+                    "--private-diagnostics-dir", str(diagnostics_root),
+                ],
+                check=False,
+                capture_output=True,
+                env=environment,
+            )
+            if retained.returncode != 0:
+                fail(f"dispatcher could not retain private {component} diagnostics: {retained.stderr.decode(errors='replace')}")
+            attempt_dir = diagnostics_root / component / "attempt-1"
+            retained_files = [path for path in attempt_dir.rglob("*") if path.is_file()]
+            if not retained_files:
+                fail(f"dispatcher retained no private {component} diagnostics")
+            for retained_file in retained_files:
+                if allowed_diagnostic_name.fullmatch(retained_file.name) is None:
+                    fail(f"dispatcher retained forbidden private diagnostic basename {retained_file.name!r}")
+            retained_names = {path.name for path in diagnostics_root.rglob("*")}
+            if retained_names & forbidden_diagnostic_names:
+                fail(f"dispatcher retained private inputs, outputs, compatibility data, or credentials for {component}")
+
+        retry_diagnostics = root / "private-smoke-retry"
+        retry_diagnostics.mkdir(mode=0o700)
+        retained_retry_count = root / "private-smoke-retry-count.txt"
+        retained_retry_output = root / "private-smoke-retry.json"
+        retained_retry_environment = environment.copy()
+        retained_retry_environment.update(
+            {"ZEPHYR_FAKE_MODE": "smoke-transient", "ZEPHYR_FAKE_COUNT": str(retained_retry_count)}
+        )
+        retained_retry = subprocess.run(
+            [
+                "sh", str(dispatcher), "smoke", "--compat", str(compatibility),
+                "--policy", str(policy), "--output", str(retained_retry_output),
+                "--private-diagnostics-dir", str(retry_diagnostics),
+            ],
+            check=False,
+            capture_output=True,
+            env=retained_retry_environment,
+        )
+        if retained_retry.returncode != 0:
+            fail(f"private smoke retry failed: {retained_retry.stderr.decode(errors='replace')}")
+        first_smoke_stderr = retry_diagnostics / "smoke" / "attempt-1" / "smoke-stderr.log"
+        second_smoke_stderr = retry_diagnostics / "smoke" / "attempt-2" / "smoke-stderr.log"
+        if "private smoke diagnostic" not in first_smoke_stderr.read_text(encoding="utf-8") or not second_smoke_stderr.exists():
+            fail("dispatcher did not retain each smoke attempt before retry cleanup")
+
+        if list(root.glob(".zephyr-codex-dispatch.*")):
+            fail("dispatcher retained raw work files without a private diagnostics destination")
+
 
 def validate_codex_output_schemas() -> None:
     for name in ("candidate-findings.codex.schema.json", "evidence-verdict.codex.schema.json", "semantic-routing.codex.schema.json"):
@@ -1698,6 +2222,7 @@ def validate_no_placeholders() -> None:
 def main() -> int:
     try:
         validate_roles()
+        validate_bootstrap_defaults()
         validate_reviewer_role_contract()
         validate_asset_manifest()
         validate_skills()

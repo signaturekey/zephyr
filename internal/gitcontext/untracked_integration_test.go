@@ -71,3 +71,15 @@ func TestExplicitUntrackedContentIsFilteredAndBounded(t *testing.T) {
 		t.Fatalf("reviewability/stats = %v/%#v", snapshot.HasReviewableChanges(), snapshot.Stats)
 	}
 }
+
+func TestLikelySecretDetectionDoesNotExcludeGoAllowlistFixture(t *testing.T) {
+	fixture := []byte(`package environment_test
+
+func TestClosedEnvironment(t *testing.T) {
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "aws-parent-secret")
+}
+`)
+
+	require.False(t, containsLikelySecret(fixture))
+	require.True(t, containsLikelySecret([]byte("AWS_SECRET_ACCESS_KEY=real-secret-value\n")))
+}

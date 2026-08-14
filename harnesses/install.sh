@@ -213,5 +213,6 @@ sh "$script_dir/sync-discovery.sh" --check
     install_file "$source_path" "$codex_skill_root/references/agents/${source_path##*/}"
   done
 echo "Zephyr для Codex установлен в $codex_skill_root и $codex_agents_dir."
+echo "Run zephyr-codex doctor before the first experimental review."
 
 echo "Начните новую сессию harness, чтобы загрузились установленный skill и agents."

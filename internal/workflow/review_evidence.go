@@ -288,6 +288,83 @@ func (service *Service) ValidateVerdicts(ctx context.Context, options ValidateVe
 	return ValidateVerdictsResult{RunID: manifest.ID, Verdicts: len(verdicts.Verdicts), VerdictPath: verdictPath}, nil
 }
 
+func (service *Service) PrepareEvidence(ctx context.Context, options PrepareEvidenceOptions) (PrepareEvidenceResult, error) {
+	if err := requireService(service); err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	unlock, err := service.lockRun(ctx, options.RunID)
+	if err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	defer unlock()
+	manifest, err := service.store.Load(ctx, options.RunID)
+	if err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	if err := ensureStage(manifest, "route", run.StageComplete); err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	if err := ensureStage(manifest, "review", run.StageComplete); err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	if err := ensureStage(manifest, "evidence", run.StagePending); err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	routeResult, err := artifact[routing.Result](service, manifest, "routing.json")
+	if err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	reports, err := loadPrecheckReports(service, manifest, routeResult)
+	if err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	if len(reports) == 0 {
+		return PrepareEvidenceResult{}, errors.New("no selected reviewer produced a validated result")
+	}
+	packet, err := artifact[contextpack.Packet](service, manifest, "packet", "review-packet.json")
+	if err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	candidates, err := artifact[evidence.CandidateSet](service, manifest, "evidence", "prechecked.json")
+	if err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	if candidates.RunID != manifest.ID || packet.RunID != manifest.ID {
+		return PrepareEvidenceResult{}, fmt.Errorf("packet and prechecked candidates must match run %q", manifest.ID)
+	}
+	snapshot, err := artifact[gitcontext.Snapshot](service, manifest, "git", "snapshot.json")
+	if err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	stale, err := service.collector.CheckStale(ctx, snapshot)
+	if err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	if stale.Stale {
+		return PrepareEvidenceResult{}, errors.New("Git input changed before evidence preparation; start a new run")
+	}
+	input, err := evidence.BuildGateInput(candidates, packet)
+	if err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	stale, err = service.collector.CheckStale(ctx, snapshot)
+	if err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	if stale.Stale {
+		return PrepareEvidenceResult{}, errors.New("Git input changed during evidence preparation; start a new run")
+	}
+	candidatePath, err := service.store.ArtifactPath(manifest.ID, "evidence", "prechecked.json")
+	if err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	evidencePath, err := service.store.WriteJSON(ctx, manifest.ID, input, "evidence", "minimal.json")
+	if err != nil {
+		return PrepareEvidenceResult{}, err
+	}
+	return PrepareEvidenceResult{RunID: manifest.ID, CandidateSet: candidatePath, Evidence: evidencePath, Items: len(input.Items)}, nil
+}
+
 func (service *Service) MarkFailed(ctx context.Context, options MarkFailedOptions) (result MarkFailedResult, returnErr error) {
 	if err := requireService(service); err != nil {
 		return result, err
