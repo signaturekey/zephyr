@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "id": "09-rejected-false-positive",
+  "description": "A reviewer claims a map read races, but the surrounding method holds an RWMutex.",
+  "files": [
+    {
+      "path": "cache/safe.go",
+      "content": "package cache\n\nimport \"sync\"\n\ntype Cache struct {\n\tmu sync.RWMutex\n\tvalues map[string]string\n}\n\nfunc (c *Cache) Get(key string) string {\n\tc.mu.RLock()\n\tdefer c.mu.RUnlock()\n\treturn c.values[key]\n}\n"
+    }
+  ],
+  "changed_files": [
+    "cache/safe.go"
+  ],
+  "candidates": [
+    {
+      "id": "golang-expert-001",
+      "role": "golang-expert",
+      "severity": "P1",
+      "category": "concurrency",
+      "title": "Map read is allegedly unsynchronized",
+      "location": {
+        "file": "cache/safe.go",
+        "line_start": 13,
+        "line_end": 13,
+        "symbol": "Cache.Get"
+      },
+      "evidence": {
+        "code": "return c.values[key]",
+        "execution_path": "Get reads values while another goroutine may write",
+        "violated_invariant": "Concurrent map reads and writes require synchronization",
+        "requirement_source": null,
+        "falsifier_checked": "Checked the return expression for an inline lock"
+      },
+      "impact": "The alleged race could crash the process.",
+      "recommendation": "Add a read lock around the map access.",
+      "confidence": 0.84,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "golang-expert-001",
+      "verdict": "rejected",
+      "final_severity": null,
+      "reason_code": "counterevidence-found",
+      "reason": "The method acquires RLock before the cited read and defers RUnlock; the candidate ignored controlling context.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [],
+    "needs_human": 0,
+    "rejected_candidates": 1,
+    "rejection_reasons": [
+      "counterevidence-found"
+    ],
+    "honest_empty": true
+  }
+}

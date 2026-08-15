@@ -1,11 +1,11 @@
 {
-  "version": 1,
+  "version": 2,
   "case_id": "synthetic-coverage-limit",
   "synthetic": true,
   "baseline": {
     "repository": "synthetic/sql-service",
-    "pull_request_ref": "synthetic:102",
-    "merged_at": "2026-08-02T11:00:00Z",
+    "change_ref": "synthetic:102",
+    "adjudicated_at": "2026-08-02T11:00:00Z",
     "reviewed_sha": "3333333333333333333333333333333333333333",
     "human_findings": [
       {
@@ -19,12 +19,12 @@
     ]
   },
   "zephyr_run": {
-    "harness": "codex-app",
-    "mode": "implementation",
+    "report_version": 2,
+    "source": "commit",
     "executed_at": "2026-08-02T10:30:00Z",
     "run_id": "synthetic-coverage-limit-run",
-    "review_artifact": "synthetic/coverage-limit/review.json",
-    "coverage_limits": ["sql-expert was excluded because the configured role limit was reached"],
+    "evidence_status": "skipped-no-candidates",
+    "coverage_limits": ["role sql-expert failed: synthetic reviewer timeout"],
     "findings": []
   },
   "comparison": {

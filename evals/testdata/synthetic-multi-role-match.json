@@ -1,11 +1,11 @@
 {
-  "version": 1,
+  "version": 2,
   "case_id": "synthetic-multi-role-match",
   "synthetic": true,
   "baseline": {
     "repository": "synthetic/frontend-service",
-    "pull_request_ref": "synthetic:104",
-    "merged_at": "2026-08-02T13:00:00Z",
+    "change_ref": "synthetic:104",
+    "adjudicated_at": "2026-08-02T13:00:00Z",
     "reviewed_sha": "5555555555555555555555555555555555555555",
     "human_findings": [
       {
@@ -19,11 +19,11 @@
     ]
   },
   "zephyr_run": {
-    "harness": "codex-app",
-    "mode": "implementation",
+    "report_version": 2,
+    "source": "commit",
     "executed_at": "2026-08-02T12:30:00Z",
     "run_id": "synthetic-multi-role-match-run",
-    "review_artifact": "synthetic/multi-role-match/review.json",
+    "evidence_status": "validated",
     "coverage_limits": [],
     "findings": [
       {

@@ -1,20 +1,16 @@
 {
   "version": 1,
   "id": "02-context-loss",
-  "plan_item": 2,
-  "title": "Lost context.Context",
   "description": "A request-scoped context is replaced before a downstream call.",
-  "mode": "implementation",
-  "source": "working-tree",
   "files": [
     {
       "path": "client/load.go",
       "content": "package client\n\nimport \"context\"\n\ntype Store interface { Load(context.Context, string) error }\n\nfunc Load(ctx context.Context, store Store, id string) error {\n\treturn store.Load(context.Background(), id)\n}\n"
     }
   ],
-  "changed_files": ["client/load.go"],
-  "plan": null,
-  "reviewer_roles": ["code-reviewer", "golang-expert"],
+  "changed_files": [
+    "client/load.go"
+  ],
   "candidates": [
     {
       "id": "golang-expert-001",
@@ -22,7 +18,12 @@
       "severity": "P1",
       "category": "context-propagation",
       "title": "Cancellation and deadlines are discarded",
-      "location": {"file": "client/load.go", "line_start": 8, "line_end": 8, "symbol": "Load"},
+      "location": {
+        "file": "client/load.go",
+        "line_start": 8,
+        "line_end": 8,
+        "symbol": "Load"
+      },
       "evidence": {
         "code": "store.Load(context.Background(), id)",
         "execution_path": "A cancelled request enters Load, which constructs a live background context for Store.Load",
@@ -49,7 +50,16 @@
   "expected": {
     "precheck_accepted": 1,
     "precheck_rejected": 0,
-    "final": [{"id": "golang-expert-001", "severity": "P1", "source_roles": ["golang-expert"], "duplicate_ids": []}],
+    "final": [
+      {
+        "id": "golang-expert-001",
+        "severity": "P1",
+        "source_roles": [
+          "golang-expert"
+        ],
+        "duplicate_ids": []
+      }
+    ],
     "needs_human": 0,
     "rejected_candidates": 0,
     "rejection_reasons": [],

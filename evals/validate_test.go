@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/signaturekey/zephyr/internal/report"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -51,7 +52,8 @@ type evalRecord struct {
 		} `json:"human_findings"`
 	} `json:"baseline"`
 	ZephyrRun struct {
-		Findings []struct {
+		ReportVersion int `json:"report_version"`
+		Findings      []struct {
 			ID string `json:"id"`
 		} `json:"findings"`
 	} `json:"zephyr_run"`
@@ -71,6 +73,7 @@ func validateReferences(t *testing.T, data []byte) {
 	t.Helper()
 	var record evalRecord
 	require.NoError(t, json.Unmarshal(data, &record))
+	require.Equal(t, report.Version, record.ZephyrRun.ReportVersion)
 	humanIDs := make([]string, 0, len(record.Baseline.HumanFindings))
 	for _, finding := range record.Baseline.HumanFindings {
 		humanIDs = append(humanIDs, finding.ID)

@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://zephyr.local/evals/v1/forward-eval.schema.json",
-  "title": "Zephyr forward evaluation record v1",
+  "$id": "https://zephyr.local/evals/v2/forward-eval.schema.json",
+  "title": "Zephyr forward evaluation record v2",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "case_id", "synthetic", "baseline", "zephyr_run", "comparison"],
   "properties": {
-    "version": {"const": 1},
+    "version": {"const": 2},
     "case_id": {"$ref": "#/$defs/slug"},
     "synthetic": {"type": "boolean"},
     "baseline": {"$ref": "#/$defs/baseline"},
@@ -47,11 +47,11 @@
     "baseline": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repository", "pull_request_ref", "merged_at", "reviewed_sha", "human_findings"],
+      "required": ["repository", "change_ref", "adjudicated_at", "reviewed_sha", "human_findings"],
       "properties": {
         "repository": {"$ref": "#/$defs/nonEmpty"},
-        "pull_request_ref": {"$ref": "#/$defs/nonEmpty"},
-        "merged_at": {"type": "string", "format": "date-time"},
+        "change_ref": {"$ref": "#/$defs/nonEmpty"},
+        "adjudicated_at": {"type": "string", "format": "date-time"},
         "reviewed_sha": {"$ref": "#/$defs/sha"},
         "human_findings": {"type": "array", "items": {"$ref": "#/$defs/humanFinding"}}
       }
@@ -59,13 +59,13 @@
     "zephyrRun": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["harness", "mode", "executed_at", "run_id", "review_artifact", "coverage_limits", "findings"],
+      "required": ["report_version", "source", "executed_at", "run_id", "evidence_status", "coverage_limits", "findings"],
       "properties": {
-        "harness": {"type": "string", "enum": ["codex-app"]},
-        "mode": {"type": "string", "enum": ["plan", "implementation", "alignment"]},
+        "report_version": {"const": 2},
+        "source": {"type": "string", "enum": ["worktree", "commit", "branch"]},
         "executed_at": {"type": "string", "format": "date-time"},
         "run_id": {"$ref": "#/$defs/nonEmpty"},
-        "review_artifact": {"$ref": "#/$defs/nonEmpty"},
+        "evidence_status": {"type": "string", "enum": ["validated", "skipped-no-candidates"]},
         "coverage_limits": {"type": "array", "items": {"$ref": "#/$defs/nonEmpty"}},
         "findings": {"type": "array", "items": {"$ref": "#/$defs/zephyrFinding"}}
       }

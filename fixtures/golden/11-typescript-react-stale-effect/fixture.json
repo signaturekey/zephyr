@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "id": "11-typescript-react-stale-effect",
+  "description": "A React effect keeps loading the first user after the route parameter changes.",
+  "files": [
+    {
+      "path": "src/pages/profile.tsx",
+      "content": "import { useEffect, useState } from 'react';\n\nexport function Profile({ userId }: { userId: string }) {\n  const [name, setName] = useState('');\n  useEffect(() =\u003e {\n    loadUser(userId).then((user) =\u003e setName(user.name));\n  }, []);\n  return \u003ch1\u003e{name}\u003c/h1\u003e;\n}\n"
+    }
+  ],
+  "changed_files": [
+    "src/pages/profile.tsx"
+  ],
+  "candidates": [
+    {
+      "id": "react-expert-001",
+      "role": "react-expert",
+      "severity": "P1",
+      "category": "react-hooks",
+      "title": "Profile keeps data for the initial user",
+      "location": {
+        "file": "src/pages/profile.tsx",
+        "line_start": 5,
+        "line_end": 7,
+        "symbol": "Profile"
+      },
+      "evidence": {
+        "code": "useEffect(() =\u003e { loadUser(userId) }, [])",
+        "execution_path": "The route reuses Profile with a new userId, but the empty dependency array prevents a second load",
+        "violated_invariant": "Rendered profile data must correspond to the current userId prop",
+        "requirement_source": null,
+        "falsifier_checked": "The supplied component has no key-based remount or other effect that reloads data when userId changes"
+      },
+      "impact": "Navigation can display another user's stale profile data.",
+      "recommendation": "Depend on userId and guard request ordering or cancellation when the identifier changes.",
+      "confidence": 0.98,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "react-expert-001",
+      "verdict": "accepted",
+      "final_severity": "P1",
+      "reason_code": "reachable-stale-state",
+      "reason": "The prop-change path and missing effect dependency directly demonstrate stale user data.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [
+      {
+        "id": "react-expert-001",
+        "severity": "P1",
+        "source_roles": [
+          "react-expert"
+        ],
+        "duplicate_ids": []
+      }
+    ],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": false
+  }
+}

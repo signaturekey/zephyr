@@ -1,409 +1,63 @@
 package routing
 
 import (
-	"errors"
-	"strings"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/signaturekey/zephyr/internal/config"
+	"github.com/signaturekey/zephyr/internal/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestRouteImplementationSelectsBaseAndGoRoles(t *testing.T) {
-	cfg := mustConfig(t, nil)
-	result, err := Route(cfg, Input{Mode: ModeImplementation, ChangedPaths: []string{"main.go"}, HasChanges: true})
-	require.NoError(t, err, "route")
-
-	want := []string{config.RoleCodeReviewer, config.RoleGolangExpert}
-	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
-		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
-	}
-	assert.Len(t, result.Excluded, len(config.KnownRoles())-len(want), "excluded role count")
-	assert.True(t, hasReason(result.Selected[0], ReasonRequiredByMode), "base role lacks required reason")
-	if reason := reasonWithCode(result.Selected[1], ReasonRoutingRule); reason == nil || len(reason.MatchedPaths) != 1 || reason.MatchedPaths[0] != "main.go" {
-		t.Fatalf("Go role lacks path evidence: %+v", result.Selected[1])
-	}
-}
-
-func TestRoutePythonChangesSelectPythonExpert(t *testing.T) {
-	result, err := Route(mustConfig(t, nil), Input{
-		Mode: ModeImplementation, ChangedPaths: []string{"services/payments/worker.py"}, HasChanges: true,
-	})
+func TestPrepareProtectsRequiredPathAndSecurityRolesWithoutCoverageLimit(t *testing.T) {
+	cfg, err := config.LoadBytes(nil)
 	require.NoError(t, err)
-	want := []string{config.RoleCodeReviewer, "python-expert"}
-	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
-		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
-	}
-	decision := decisionForRole(result.Selected, "python-expert")
-	require.NotNil(t, decision)
-	if reason := reasonWithCode(*decision, ReasonRoutingRule); reason == nil || cmp.Diff([]string{"services/payments/worker.py"}, reason.MatchedPaths) != "" {
-		t.Fatalf("Python role lacks path evidence: %+v", decision)
-	}
-}
-
-func TestRouteTypeScriptFrontendSelectsSpecialists(t *testing.T) {
-	result, err := Route(mustConfig(t, nil), Input{
-		Mode:         ModeImplementation,
-		ChangedPaths: []string{"src/pages/profile.tsx", "src/api/profile.ts"},
-		Signals:      []string{"typescript", "frontend", "react", "tests"},
-		HasChanges:   true,
-	})
-	require.NoError(t, err, "route")
-	want := []string{
-		config.RoleCodeReviewer,
-		config.RoleTypeScriptExpert,
-		config.RoleReactExpert,
-		config.RoleFrontendExpert,
-		config.RoleQAExpert,
-	}
-	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
-		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
-	}
-}
-
-func TestRouteTSXWithoutReactSignalDoesNotSelectReactExpert(t *testing.T) {
-	result, err := Route(mustConfig(t, nil), Input{
-		Mode: ModeImplementation, ChangedPaths: []string{"src/widget.tsx"}, HasChanges: true,
-	})
+	request, err := Prepare(cfg, Input{RunID: "run", ChangedPaths: []string{"cmd/main.go"}})
 	require.NoError(t, err)
-	assert.Nil(t, decisionForRole(result.Selected, config.RoleReactExpert))
-	assert.NotNil(t, decisionForRole(result.Selected, config.RoleFrontendExpert))
+	assert.Equal(t, []string{"code-reviewer", "golang-expert", "security-auditor"}, roles(request.Protected))
+	assert.Len(t, request.Protected, 3)
+	assert.Len(t, request.Candidates, len(config.KnownRoles())-3)
 }
 
-func TestRouteReactSignalRequiresReactSourcePath(t *testing.T) {
-	result, err := Route(mustConfig(t, nil), Input{
-		Mode: ModeImplementation, ChangedPaths: []string{"src/theme.css"}, Signals: []string{"react"}, HasChanges: true,
-	})
+func TestResolveAndFallbackAccountForEveryOptionalRole(t *testing.T) {
+	cfg, err := config.LoadBytes(nil)
 	require.NoError(t, err)
-	assert.Nil(t, decisionForRole(result.Selected, config.RoleReactExpert))
-}
-
-func TestRouteSkillChangesSelectAuthoringExpert(t *testing.T) {
-	for _, path := range []string{"frontend/skills/example/SKILL.md", "AGENTS.md", "services/payments/AGENTS.md", "CLAUDE.md", "frontend/CLAUDE.md"} {
-		t.Run(path, func(t *testing.T) {
-			result, err := Route(mustConfig(t, nil), Input{Mode: ModeImplementation, ChangedPaths: []string{path}, HasChanges: true})
-			require.NoError(t, err, "route")
-			want := []string{config.RoleCodeReviewer, config.RoleSkillAuthoringExpert}
-			if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
-				t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
-			}
+	request, err := Prepare(cfg, Input{RunID: "run", ChangedPaths: []string{"README.md"}})
+	require.NoError(t, err)
+	proposal := schema.SemanticRoutingEnvelope{Version: 1, RunID: "run"}
+	for _, candidate := range request.Candidates {
+		proposal.Decisions = append(proposal.Decisions, schema.SemanticRoutingDecision{
+			Role: candidate.Role, Decision: "exclude", EvidenceRefs: []string{"snapshot.diff"}, Reason: "scope is unrelated", Confidence: 1,
 		})
 	}
+	result, err := Resolve(request, proposal)
+	require.NoError(t, err)
+	assert.Len(t, result.Selected, len(request.Protected))
+	assert.Len(t, result.Excluded, len(request.Excluded)+len(request.Candidates))
+
+	fallback := Fallback(request, "router failed")
+	assert.Len(t, fallback.Selected, len(request.Protected)+len(request.Candidates))
+	assert.True(t, fallback.Degraded)
 }
 
-func TestRouteOperationalChangesSelectFirstIterationExperts(t *testing.T) {
-	result, err := Route(mustConfig(t, nil), Input{
-		Mode: ModeImplementation,
-		ChangedPaths: []string{
-			"internal/resilience/retry.go",
-			"internal/databus/consumer.go",
-			"deploy/k8s/deployment.yaml",
-			"internal/cache/redis.go",
-		},
-		Signals:    []string{"reliability", "messaging", "infrastructure", "storage"},
-		HasChanges: true,
-	})
-	require.NoError(t, err, "route")
-	want := []string{
-		config.RoleCodeReviewer,
-		config.RoleReliabilityExpert,
-		config.RoleStorageExpert,
-		config.RoleMessagingExpert,
-		config.RoleInfrastructureExpert,
-		config.RoleGolangExpert,
-	}
-	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
-		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
-	}
+func TestDetectReactSignalRequiresDiffEvidence(t *testing.T) {
+	signals, strong := DetectSignals([]string{"src/widget.tsx"}, `+import React from "react"`)
+	assert.Contains(t, signals, "react")
+	assert.Contains(t, strong, "react")
+
+	signals, _ = DetectSignals([]string{"src/widget.tsx"}, "+export const value = 1")
+	assert.NotContains(t, signals, "react")
 }
 
-func TestRoutePlanSelectsArchitect(t *testing.T) {
-	result, err := Route(mustConfig(t, nil), Input{Mode: ModePlan, HasPlan: true})
-	require.NoError(t, err, "route")
-	if diff := cmp.Diff([]string{config.RoleArchitectReviewer}, decisionRoles(result.Selected)); diff != "" {
-		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
-	}
+func TestDetectSignalsDoesNotTreatPackageAsMessageAcknowledgement(t *testing.T) {
+	signals, _ := DetectSignals([]string{"divide.go"}, "+package divide\n+return left / right, nil")
+	assert.NotContains(t, signals, "messaging")
 }
 
-func TestRouteAutoMode(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    Input
-		wantMode Mode
-		wantErr  bool
-	}{
-		{name: "plan", input: Input{Mode: ModeAuto, HasPlan: true}, wantMode: ModePlan},
-		{name: "implementation", input: Input{Mode: ModeAuto, HasChanges: true}, wantMode: ModeImplementation},
-		{name: "paths imply changes", input: Input{Mode: ModeAuto, ChangedPaths: []string{"README.md"}}, wantMode: ModeImplementation},
-		{name: "alignment", input: Input{Mode: ModeAuto, HasPlan: true, HasChanges: true}, wantMode: ModeAlignment},
-		{name: "empty", input: Input{Mode: ModeAuto}, wantErr: true},
+func roles(decisions []Decision) []string {
+	result := make([]string, 0, len(decisions))
+	for _, decision := range decisions {
+		result = append(result, decision.Role)
 	}
-
-	cfg := mustConfig(t, nil)
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			result, err := Route(cfg, test.input)
-			if test.wantErr {
-				require.ErrorIs(t, err, ErrInvalidInput)
-				return
-			}
-			require.NoError(t, err, "route")
-			assert.Equal(t, test.wantMode, result.Mode)
-		})
-	}
-}
-
-func TestRouteStandardSelectsEveryMatchedRole(t *testing.T) {
-	input := Input{
-		Mode: ModeImplementation,
-		ChangedPaths: []string{
-			"main.go",
-			"migrations/001.sql",
-			"brief/openapi/public.yaml",
-		},
-		Signals:    []string{"security"},
-		HasChanges: true,
-	}
-	result, err := Route(mustConfig(t, nil), input)
-	require.NoError(t, err, "route")
-
-	want := []string{
-		config.RoleCodeReviewer,
-		config.RoleSecurityAuditor,
-		config.RoleSQLExpert,
-		config.RoleContractReviewer,
-		config.RoleGolangExpert,
-	}
-	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
-		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
-	}
-}
-
-func TestRouteThoroughSelectsEveryMatchedRole(t *testing.T) {
-	cfg := mustConfig(t, []byte("version: 1\nprofile: thorough\n"))
-	result, err := Route(cfg, Input{
-		Mode:         ModeImplementation,
-		ChangedPaths: []string{"main.go", "migrations/001.sql", "brief/openapi/public.yaml"},
-		Signals:      []string{"security", "architecture", "tests"},
-		HasChanges:   true,
-	})
-	require.NoError(t, err, "route")
-	want := []string{
-		config.RoleCodeReviewer,
-		config.RoleSecurityAuditor,
-		config.RoleSQLExpert,
-		config.RoleContractReviewer,
-		config.RoleGolangExpert,
-		config.RoleArchitectReviewer,
-		config.RoleQAExpert,
-	}
-	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
-		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
-	}
-}
-
-func TestRouteForceIncludeOutranksDetectedOptionalRole(t *testing.T) {
-	cfg := mustConfig(t, []byte("version: 1\nlimits:\n  max_roles_standard: 2\n"))
-	result, err := Route(cfg, Input{
-		Mode:         ModeImplementation,
-		HasChanges:   true,
-		Signals:      []string{"security"},
-		ForceInclude: []string{config.RoleQAExpert},
-	})
-	require.NoError(t, err, "route")
-	want := []string{config.RoleCodeReviewer, config.RoleQAExpert}
-	if diff := cmp.Diff(want, decisionRoles(result.Selected)); diff != "" {
-		t.Fatalf("selected roles mismatch (-want +got):\n%s", diff)
-	}
-	security := decisionForRole(result.Excluded, config.RoleSecurityAuditor)
-	if security == nil || !hasReason(*security, ReasonProfileLimit) {
-		t.Fatalf("security role should be displaced with an explanation: %+v", security)
-	}
-}
-
-func TestRouteExplicitlyExcludesOptionalRole(t *testing.T) {
-	result, err := Route(mustConfig(t, nil), Input{
-		Mode:         ModeImplementation,
-		ChangedPaths: []string{"main.go"},
-		Signals:      []string{"security"},
-		ForceExclude: []string{config.RoleSecurityAuditor},
-		HasChanges:   true,
-	})
-	if err != nil {
-		t.Fatalf("Route: %v", err)
-	}
-	if decisionForRole(result.Selected, config.RoleSecurityAuditor) != nil {
-		t.Fatal("explicitly excluded role was selected")
-	}
-	security := decisionForRole(result.Excluded, config.RoleSecurityAuditor)
-	if security == nil || !hasReason(*security, ReasonExplicitExclusion) {
-		t.Fatalf("excluded role lacks explicit reason: %+v", security)
-	}
-}
-
-func TestRouteExplainsDisabledMatchedRole(t *testing.T) {
-	cfg := mustConfig(t, []byte("version: 1\nroles:\n  golang-expert:\n    enabled: false\n"))
-	result, err := Route(cfg, Input{Mode: ModeImplementation, ChangedPaths: []string{"main.go"}, HasChanges: true})
-	if err != nil {
-		t.Fatalf("Route: %v", err)
-	}
-	decision := decisionForRole(result.Excluded, config.RoleGolangExpert)
-	if decision == nil || !hasReason(*decision, ReasonRoutingRule) || !hasReason(*decision, ReasonDisabled) {
-		t.Fatalf("disabled matched role lacks complete explanation: %+v", decision)
-	}
-}
-
-func TestRouteRuleWithPathsAndSignalsRequiresBoth(t *testing.T) {
-	cfg := mustConfig(t, []byte(`
-version: 1
-routing:
-  - when:
-      paths: ["cmd/**"]
-      signals: ["public-entrypoint"]
-    add_roles: ["qa-expert"]
-`))
-
-	withoutSignal, err := Route(cfg, Input{Mode: ModeImplementation, ChangedPaths: []string{"cmd/zephyr/main.go"}, HasChanges: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if decisionForRole(withoutSignal.Selected, config.RoleQAExpert) != nil {
-		t.Fatal("rule matched without its signal group")
-	}
-
-	withSignal, err := Route(cfg, Input{Mode: ModeImplementation, ChangedPaths: []string{"cmd/zephyr/main.go"}, Signals: []string{"public-entrypoint"}, HasChanges: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	decision := decisionForRole(withSignal.Selected, config.RoleQAExpert)
-	if decision == nil {
-		t.Fatal("rule did not match both condition groups")
-	}
-	reason := reasonWithCode(*decision, ReasonRoutingRule)
-	if reason == nil || cmp.Diff([]string{"cmd/zephyr/main.go"}, reason.MatchedPaths) != "" || cmp.Diff([]string{"public-entrypoint"}, reason.MatchedSignals) != "" {
-		t.Fatalf("unexpected routing evidence: %+v", reason)
-	}
-}
-
-func TestRouteRejectsInvalidOverridesAndMandatoryExclusion(t *testing.T) {
-	tests := []struct {
-		name  string
-		input Input
-		want  string
-	}{
-		{name: "unknown role", input: Input{Mode: ModePlan, ForceInclude: []string{"oracle"}}, want: "unknown role"},
-		{name: "duplicate role", input: Input{Mode: ModePlan, ForceInclude: []string{config.RoleQAExpert, config.RoleQAExpert}}, want: "duplicate role"},
-		{name: "conflicting role", input: Input{Mode: ModePlan, ForceInclude: []string{config.RoleQAExpert}, ForceExclude: []string{config.RoleQAExpert}}, want: "both force-included"},
-		{name: "mandatory exclusion", input: Input{Mode: ModeImplementation, ForceExclude: []string{config.RoleCodeReviewer}}, want: "requires force-excluded"},
-	}
-
-	cfg := mustConfig(t, nil)
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			_, err := Route(cfg, test.input)
-			if !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("error = %v, want ErrInvalidInput containing %q", err, test.want)
-			}
-		})
-	}
-}
-
-func TestRouteRejectsDisabledRequiredOrForcedRole(t *testing.T) {
-	cfg := mustConfig(t, []byte(`
-version: 1
-roles:
-  architect-reviewer:
-    enabled: false
-  qa-expert:
-    enabled: false
-`))
-
-	if _, err := Route(cfg, Input{Mode: ModePlan}); !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "requires disabled") {
-		t.Fatalf("required disabled role error = %v", err)
-	}
-	if _, err := Route(cfg, Input{Mode: ModeImplementation, HasChanges: true, ForceInclude: []string{config.RoleQAExpert}}); !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "force-include disabled") {
-		t.Fatalf("forced disabled role error = %v", err)
-	}
-}
-
-func TestRouteRejectsTooManyMandatoryAndForcedRoles(t *testing.T) {
-	cfg := mustConfig(t, []byte("version: 1\nlimits:\n  max_roles_standard: 1\n"))
-	_, err := Route(cfg, Input{
-		Mode:         ModeImplementation,
-		HasChanges:   true,
-		ForceInclude: []string{config.RoleQAExpert},
-	})
-	if !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "exceed") {
-		t.Fatalf("error = %v, want forced-role limit error", err)
-	}
-}
-
-func TestRouteRejectsNonRepositoryRelativePath(t *testing.T) {
-	for _, path := range []string{"/tmp/main.go", "../main.go", "a/../../main.go", ".", "bad\x00path.go"} {
-		_, err := Route(mustConfig(t, nil), Input{Mode: ModeImplementation, ChangedPaths: []string{path}, HasChanges: true})
-		if !errors.Is(err, ErrInvalidInput) {
-			t.Errorf("path %q error = %v, want ErrInvalidInput", path, err)
-		}
-	}
-}
-
-func TestRouteIsDeterministic(t *testing.T) {
-	cfg := mustConfig(t, nil)
-	input := Input{
-		Mode:         ModeAlignment,
-		ChangedPaths: []string{"z.go", "migrations/2.sql", "a.go"},
-		Signals:      []string{"tests", "security"},
-		HasPlan:      true,
-		HasChanges:   true,
-	}
-	want, err := Route(cfg, input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := 0; i < 100; i++ {
-		got, err := Route(cfg, input)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if diff := cmp.Diff(want, got); diff != "" {
-			t.Fatalf("route %d was nondeterministic (-want +got):\n%s", i, diff)
-		}
-	}
-}
-
-func mustConfig(t *testing.T, project []byte) config.Config {
-	t.Helper()
-	cfg, err := config.LoadBytes(project)
-	require.NoError(t, err, "load config")
-	return cfg
-}
-
-func decisionRoles(decisions []Decision) []string {
-	roles := make([]string, len(decisions))
-	for i, decision := range decisions {
-		roles[i] = decision.Role
-	}
-	return roles
-}
-
-func decisionForRole(decisions []Decision, role string) *Decision {
-	for i := range decisions {
-		if decisions[i].Role == role {
-			return &decisions[i]
-		}
-	}
-	return nil
-}
-
-func hasReason(decision Decision, code string) bool { return reasonWithCode(decision, code) != nil }
-
-func reasonWithCode(decision Decision, code string) *Reason {
-	for i := range decision.Reasons {
-		if decision.Reasons[i].Code == code {
-			return &decision.Reasons[i]
-		}
-	}
-	return nil
+	return result
 }
