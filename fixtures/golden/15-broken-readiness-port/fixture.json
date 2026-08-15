@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "id": "15-broken-readiness-port",
+  "description": "A Kubernetes workload listens on 8080 while its readiness probe targets 9090.",
+  "files": [
+    {
+      "path": "deploy/k8s/deployment.yaml",
+      "content": "apiVersion: apps/v1\nkind: Deployment\nspec:\n  template:\n    spec:\n      containers:\n        - name: app\n          command: [\"app\", \"--listen=:8080\"]\n          ports:\n            - containerPort: 8080\n          readinessProbe:\n            httpGet:\n              path: /ready\n              port: 9090\n"
+    }
+  ],
+  "changed_files": [
+    "deploy/k8s/deployment.yaml"
+  ],
+  "candidates": [
+    {
+      "id": "infrastructure-expert-001",
+      "role": "infrastructure-expert",
+      "severity": "P1",
+      "category": "health-probe",
+      "title": "Readiness probe cannot reach the configured listener",
+      "location": {
+        "file": "deploy/k8s/deployment.yaml",
+        "line_start": 11,
+        "line_end": 14,
+        "symbol": "spec.template.spec.containers[0].readinessProbe"
+      },
+      "evidence": {
+        "code": "command: [\"app\", \"--listen=:8080\"]; port: 9090",
+        "execution_path": "The container starts its declared listener on 8080 while kubelet probes the same container on 9090",
+        "violated_invariant": "The readiness probe must target a port served by the workload",
+        "requirement_source": null,
+        "falsifier_checked": "The complete container declaration exposes only port 8080 and declares no listener or sidecar on 9090"
+      },
+      "impact": "New pods remain unready, preventing traffic and potentially blocking the rollout.",
+      "recommendation": "Point the readiness probe at the actual readiness listener and verify its path.",
+      "confidence": 0.98,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "infrastructure-expert-001",
+      "verdict": "accepted",
+      "final_severity": "P1",
+      "reason_code": "probe-listener-mismatch",
+      "reason": "The manifest itself establishes incompatible listener and readiness-probe ports.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [
+      {
+        "id": "infrastructure-expert-001",
+        "severity": "P1",
+        "source_roles": [
+          "infrastructure-expert"
+        ],
+        "duplicate_ids": []
+      }
+    ],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": false
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "id": "16-global-cache-key",
+  "description": "All user profiles are stored under one shared cache key.",
+  "files": [
+    {
+      "path": "internal/cache/profile.go",
+      "content": "package cache\n\ntype Cache interface { Set(string, string) error }\n\nfunc CacheProfile(cache Cache, userID string, profile string) error {\n\treturn cache.Set(\"profile\", profile)\n}\n"
+    }
+  ],
+  "changed_files": [
+    "internal/cache/profile.go"
+  ],
+  "candidates": [
+    {
+      "id": "storage-expert-001",
+      "role": "storage-expert",
+      "severity": "P1",
+      "category": "cache-consistency",
+      "title": "Every user profile overwrites the same cache entry",
+      "location": {
+        "file": "internal/cache/profile.go",
+        "line_start": 5,
+        "line_end": 6,
+        "symbol": "CacheProfile"
+      },
+      "evidence": {
+        "code": "cache.Set(\"profile\", profile)",
+        "execution_path": "CacheProfile receives userID but omits it from the key, so a second user's write replaces the first user's entry",
+        "violated_invariant": "Cached per-user data must be keyed by the user identity or another equally isolating namespace",
+        "requirement_source": null,
+        "falsifier_checked": "The complete function does not namespace the key and the Cache interface receives only the constant key and value"
+      },
+      "impact": "Reads through the shared key can return another user's profile or stale data.",
+      "recommendation": "Include the stable user identifier and schema namespace in the cache key.",
+      "confidence": 0.99,
+      "needs_human": false
+    }
+  ],
+  "verdicts": [
+    {
+      "candidate_id": "storage-expert-001",
+      "verdict": "accepted",
+      "final_severity": "P1",
+      "reason_code": "cache-key-collision",
+      "reason": "The user-specific input is demonstrably absent from the only cache key written by the function.",
+      "duplicate_of": null
+    }
+  ],
+  "expected": {
+    "precheck_accepted": 1,
+    "precheck_rejected": 0,
+    "final": [
+      {
+        "id": "storage-expert-001",
+        "severity": "P1",
+        "source_roles": [
+          "storage-expert"
+        ],
+        "duplicate_ids": []
+      }
+    ],
+    "needs_human": 0,
+    "rejected_candidates": 0,
+    "rejection_reasons": [],
+    "honest_empty": false
+  }
+}

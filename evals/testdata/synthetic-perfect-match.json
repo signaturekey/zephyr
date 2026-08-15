@@ -1,11 +1,11 @@
 {
-  "version": 1,
+  "version": 2,
   "case_id": "synthetic-perfect-match",
   "synthetic": true,
   "baseline": {
     "repository": "synthetic/go-service",
-    "pull_request_ref": "synthetic:101",
-    "merged_at": "2026-08-02T10:00:00Z",
+    "change_ref": "synthetic:101",
+    "adjudicated_at": "2026-08-02T10:00:00Z",
     "reviewed_sha": "2222222222222222222222222222222222222222",
     "human_findings": [
       {
@@ -19,11 +19,11 @@
     ]
   },
   "zephyr_run": {
-    "harness": "codex-app",
-    "mode": "implementation",
+    "report_version": 2,
+    "source": "commit",
     "executed_at": "2026-08-02T09:30:00Z",
     "run_id": "synthetic-perfect-match-run",
-    "review_artifact": "synthetic/perfect-match/review.json",
+    "evidence_status": "validated",
     "coverage_limits": [],
     "findings": [
       {

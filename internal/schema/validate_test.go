@@ -21,7 +21,7 @@ func TestValidateCandidateBytesCodeFinding(t *testing.T) {
 	}
 }
 
-func TestValidateCandidateBytesPlanFinding(t *testing.T) {
+func TestValidateCandidateBytesArtifactFinding(t *testing.T) {
 	data := strings.ReplaceAll(validCodeCandidates,
 		`"location":{"file":"internal/service/handler.go","line_start":42,"line_end":42,"symbol":"Handler.Process"}`,
 		`"location":{"artifact":"REVIEW_SPEC.md","section":"Data migration","line_start":81,"line_end":93}`,
@@ -33,7 +33,7 @@ func TestValidateCandidateBytesPlanFinding(t *testing.T) {
 		t.Fatalf("ValidateCandidateBytes: %v", err)
 	}
 	if !envelope.Findings[0].Location.IsArtifact() || envelope.Findings[0].Evidence.Code != nil {
-		t.Fatalf("unexpected plan finding: %+v", envelope.Findings[0])
+		t.Fatalf("unexpected artifact finding: %+v", envelope.Findings[0])
 	}
 }
 
@@ -73,7 +73,7 @@ func TestValidateCandidateBytesRejectsSchemaAndSemanticFailures(t *testing.T) {
 		{name: "unknown property", data: strings.Replace(validCodeCandidates, `"needs_human":false`, `"needs_human":false,"thoughts":"secret"`, 1), want: "additional properties"},
 		{name: "severity", data: strings.Replace(validCodeCandidates, `"severity":"P1"`, `"severity":"critical"`, 1), want: "value must be one of"},
 		{name: "empty impact", data: strings.Replace(validCodeCandidates, `"impact":"request continues"`, `"impact":""`, 1), want: "minLength"},
-		{name: "both location kinds", data: strings.Replace(validCodeCandidates, `"file":"internal/service/handler.go"`, `"file":"internal/service/handler.go","artifact":"REVIEW_SPEC.md","section":"x"`, 1), want: "oneOf"},
+		{name: "both location kinds", data: strings.Replace(validCodeCandidates, `"file":"internal/service/handler.go"`, `"file":"internal/service/handler.go","artifact":"REVIEW_SPEC.md","section":"x"`, 1), want: "anyOf"},
 		{name: "missing evidence key", data: strings.Replace(validCodeCandidates, ",\n    \"falsifier_checked\":\"checked ownership\"", "", 1), want: "missing property"},
 		{name: "mismatched role", data: strings.Replace(validCodeCandidates, `"role":"golang-expert"`, `"role":"sql-expert"`, 1), want: "differs from envelope"},
 		{name: "line range", data: strings.Replace(validCodeCandidates, `"line_start":42,"line_end":42`, `"line_start":43,"line_end":42`, 1), want: "line_end before line_start"},
@@ -199,50 +199,6 @@ func TestValidateVerdictCandidateIDs(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := ValidateVerdictCandidateIDs(test.envelope, test.candidates)
-			assertInvalidDocument(t, err, test.want)
-		})
-	}
-}
-
-func TestValidateReviewInputBytes(t *testing.T) {
-	valid := []byte(`{
-  "version": 1,
-  "run_id": "run-1",
-  "mode": "plan",
-  "source": "plan-only",
-  "repository": {"root":""},
-  "changed_files": [],
-  "technologies": ["go"],
-  "diff": {"truncated":false,"total_bytes":0},
-  "plan": {"kind":"plan","path":"REVIEW_SPEC.md","content_hash":"sha256:abc","content":"# Plan","truncated":false},
-  "business_context": [
-    {"source":"jira","key":"RINT-1","url":"https://jira.example/RINT-1","fetched_at":"2026-08-02T12:00:00Z","content_hash":"sha256:def","content":"requirements"}
-  ],
-  "project_instructions": [],
-  "sources": {"included":["REVIEW_SPEC.md"],"excluded":[],"unavailable":[]},
-  "routing_signals": ["architecture"],
-  "strong_routing_signals": [],
-  "coverage_limits": [],
-  "restrictions": ["read-only review"]
-}`)
-	if err := ValidateReviewInputBytes(valid); err != nil {
-		t.Fatalf("ValidateReviewInputBytes: %v", err)
-	}
-
-	tests := []struct {
-		name string
-		data string
-		want string
-	}{
-		{name: "missing run", data: strings.Replace(string(valid), `"run_id": "run-1",`, "", 1), want: "missing property"},
-		{name: "bad timestamp", data: strings.Replace(string(valid), "2026-08-02T12:00:00Z", "yesterday", 1), want: "date-time"},
-		{name: "unknown field", data: strings.Replace(string(valid), `"version": 1,`, `"version": 1,"thoughts":[],`, 1), want: "additional properties"},
-		{name: "duplicate changed file", data: strings.Replace(string(valid), `"changed_files": []`, `"changed_files": ["a.go","a.go"]`, 1), want: "items at 0 and 1 are equal"},
-		{name: "unsupported source", data: strings.Replace(string(valid), `"source": "plan-only"`, `"source": "github"`, 1), want: "value must be one of"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			err := ValidateReviewInputBytes([]byte(test.data))
 			assertInvalidDocument(t, err, test.want)
 		})
 	}

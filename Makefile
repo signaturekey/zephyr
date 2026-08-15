@@ -1,53 +1,45 @@
 GO ?= go
 GOFMT ?= gofmt
 BINARY ?= bin/zephyr
-GO_FILES := $(shell find . -type f -name '*.go' -not -path './.git/*' -not -path './vendor/*' | sort)
+MODULE ?= github.com/signaturekey/zephyr
+UPDATE_VERSION ?= latest
+GO_BIN := $(shell $(GO) env GOBIN)
+ifeq ($(strip $(GO_BIN)),)
+GO_BIN := $(shell $(GO) env GOPATH)/bin
+endif
+INSTALLED_BINARY := $(GO_BIN)/zephyr
+GO_FILES := $(shell find cmd internal roles schemas configs -type f -name '*.go' | sort)
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 DIRTY ?= $(shell test -z "$$(git status --porcelain 2>/dev/null)" && echo false || echo true)
 LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.dirty=$(DIRTY)
 
-.PHONY: help build install install-cli uninstall uninstall-skill uninstall-cli update fmt fmt-check test test-golden test-evals vet validate-harnesses check
+.PHONY: help build install update uninstall fmt fmt-check test race vet check
 
 help:
-	@echo "build               собрать $(BINARY)"
-	@echo "install             установить Zephyr CLI и пакет Codex"
-	@echo "uninstall           удалить Zephyr CLI и пакет Codex"
-	@echo "uninstall-skill     удалить пакет Zephyr из Codex"
-	@echo "uninstall-cli       удалить только Zephyr CLI"
-	@echo "update              обновить binary и пакет Codex"
-	@echo "fmt                  отформатировать все Go-файлы"
-	@echo "fmt-check            завершиться с ошибкой, если Go-файлам нужно форматирование"
-	@echo "test                 запустить все Go-тесты"
-	@echo "test-golden          запустить 12 детерминированных golden-fixtures"
-	@echo "test-evals           проверить записи последующей оценки"
-	@echo "vet                  запустить go vet"
-	@echo "validate-harnesses   проверить ресурсы Codex"
-	@echo "check                запустить форматирование, тесты, vet и проверку harness"
+	@echo "build      build $(BINARY)"
+	@echo "install    install Zephyr CLI with go install"
+	@echo "update     install the latest tagged Zephyr release"
+	@echo "uninstall  remove the installed Zephyr CLI"
+	@echo "fmt        format Go files"
+	@echo "fmt-check  fail when Go files need formatting"
+	@echo "test       run unit and integration tests"
+	@echo "race       run tests with the race detector"
+	@echo "vet        run go vet"
+	@echo "check      run fmt-check, test, race, and vet"
 
 build:
 	@mkdir -p "$(dir $(BINARY))"
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o "$(BINARY)" ./cmd/zephyr
 
-install: install-cli
-	sh harnesses/install.sh
-
-install-cli:
+install:
 	$(GO) install -ldflags "$(LDFLAGS)" ./cmd/zephyr
 
-uninstall:
-	$(MAKE) uninstall-skill
-	$(MAKE) uninstall-cli
-
-uninstall-skill:
-	sh harnesses/uninstall.sh
-
-uninstall-cli:
-	GO="$(GO)" sh harnesses/uninstall-cli.sh
-
 update:
-	$(MAKE) install
-	sh harnesses/update.sh
+	$(GO) install $(MODULE)/cmd/zephyr@$(UPDATE_VERSION)
+
+uninstall:
+	rm -f -- "$(INSTALLED_BINARY)"
 
 fmt:
 	$(GOFMT) -w $(GO_FILES)
@@ -62,16 +54,10 @@ fmt-check:
 test:
 	$(GO) test ./...
 
-test-golden:
-	$(GO) test ./fixtures/...
-
-test-evals:
-	$(GO) test ./evals/...
+race:
+	$(GO) test -race ./...
 
 vet:
 	$(GO) vet ./...
 
-validate-harnesses:
-	./harnesses/validate.sh
-
-check: fmt-check test vet validate-harnesses
+check: fmt-check test race vet

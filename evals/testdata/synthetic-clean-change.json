@@ -1,20 +1,20 @@
 {
-  "version": 1,
+  "version": 2,
   "case_id": "synthetic-clean-change",
   "synthetic": true,
   "baseline": {
     "repository": "synthetic/library",
-    "pull_request_ref": "synthetic:105",
-    "merged_at": "2026-08-02T14:00:00Z",
+    "change_ref": "synthetic:105",
+    "adjudicated_at": "2026-08-02T14:00:00Z",
     "reviewed_sha": "6666666666666666666666666666666666666666",
     "human_findings": []
   },
   "zephyr_run": {
-    "harness": "codex-app",
-    "mode": "implementation",
+    "report_version": 2,
+    "source": "commit",
     "executed_at": "2026-08-02T13:30:00Z",
     "run_id": "synthetic-clean-change-run",
-    "review_artifact": "synthetic/clean-change/review.json",
+    "evidence_status": "skipped-no-candidates",
     "coverage_limits": [],
     "findings": []
   },

@@ -12,19 +12,14 @@ import (
 )
 
 const (
-	reviewInputSchema       = "review-input.schema.json"
-	candidateFindingsSchema = "candidate-findings.schema.json"
-	evidenceVerdictSchema   = "evidence-verdict.schema.json"
-	semanticRoutingSchema   = "semantic-routing.schema.json"
+	candidateFindingsSchema = "candidate-findings.codex.schema.json"
+	evidenceVerdictSchema   = "evidence-verdict.codex.schema.json"
+	semanticRoutingSchema   = "semantic-routing.codex.schema.json"
 )
 
 var ErrInvalidDocument = errors.New("invalid zephyr protocol document")
 
 var compiledSchemas sync.Map
-
-func ValidateReviewInputBytes(data []byte) error {
-	return validateDocument(reviewInputSchema, data)
-}
 
 func ValidateCandidateBytes(data []byte) (CandidateEnvelope, error) {
 	if err := validateDocument(candidateFindingsSchema, data); err != nil {
@@ -179,6 +174,24 @@ func validateVerdictSemantics(envelope EvidenceVerdictEnvelope) error {
 		seen[verdict.CandidateID] = struct{}{}
 		if verdict.DuplicateOf != nil && *verdict.DuplicateOf == verdict.CandidateID {
 			return fmt.Errorf("%w: candidate %q cannot be a duplicate of itself", ErrInvalidDocument, verdict.CandidateID)
+		}
+		switch verdict.Verdict {
+		case VerdictAccepted, VerdictDowngraded:
+			if verdict.FinalSeverity == nil || verdict.DuplicateOf != nil {
+				return fmt.Errorf("%w: %s candidate %q requires final_severity and no duplicate_of", ErrInvalidDocument, verdict.Verdict, verdict.CandidateID)
+			}
+		case VerdictRejected:
+			if verdict.FinalSeverity != nil || verdict.DuplicateOf != nil {
+				return fmt.Errorf("%w: rejected candidate %q cannot set final_severity or duplicate_of", ErrInvalidDocument, verdict.CandidateID)
+			}
+		case VerdictDuplicate:
+			if verdict.FinalSeverity != nil || verdict.DuplicateOf == nil {
+				return fmt.Errorf("%w: duplicate candidate %q requires duplicate_of and null final_severity", ErrInvalidDocument, verdict.CandidateID)
+			}
+		case VerdictNeedsHuman:
+			if verdict.DuplicateOf != nil {
+				return fmt.Errorf("%w: needs-human candidate %q cannot set duplicate_of", ErrInvalidDocument, verdict.CandidateID)
+			}
 		}
 	}
 	return nil

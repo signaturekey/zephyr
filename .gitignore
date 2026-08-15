@@ -3,5 +3,6 @@
 /.idea/
 /.vscode/
 /docs/
+.DS_Store
 *.test
 *.out
