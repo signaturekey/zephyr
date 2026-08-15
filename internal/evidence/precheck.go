@@ -7,7 +7,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/signaturekey/zephyr/internal/config"
-	"github.com/signaturekey/zephyr/internal/schema"
+	"github.com/signaturekey/zephyr/internal/protocol"
 )
 
 type Scope struct {
@@ -25,21 +25,21 @@ type Rejection struct {
 }
 
 type PrecheckReport struct {
-	Version  int                       `json:"version"`
-	RunID    string                    `json:"run_id"`
-	Role     string                    `json:"role"`
-	Accepted []schema.CandidateFinding `json:"accepted"`
-	Rejected []Rejection               `json:"rejected"`
+	Version  int                         `json:"version"`
+	RunID    string                      `json:"run_id"`
+	Role     string                      `json:"role"`
+	Accepted []protocol.CandidateFinding `json:"accepted"`
+	Rejected []Rejection                 `json:"rejected"`
 }
 
 type CandidateSet struct {
-	Version  int                       `json:"version"`
-	RunID    string                    `json:"run_id"`
-	Findings []schema.CandidateFinding `json:"findings"`
+	Version  int                         `json:"version"`
+	RunID    string                      `json:"run_id"`
+	Findings []protocol.CandidateFinding `json:"findings"`
 }
 
-func Precheck(envelope schema.CandidateEnvelope, scope Scope) PrecheckReport {
-	report := PrecheckReport{Version: schema.ProtocolVersion, RunID: scope.RunID, Role: envelope.Role, Accepted: []schema.CandidateFinding{}, Rejected: []Rejection{}}
+func Precheck(envelope protocol.CandidateEnvelope, scope Scope) PrecheckReport {
+	report := PrecheckReport{Version: protocol.ProtocolVersion, RunID: scope.RunID, Role: envelope.Role, Accepted: []protocol.CandidateFinding{}, Rejected: []Rejection{}}
 	seen := make(map[string]struct{}, len(envelope.Findings))
 	for _, finding := range envelope.Findings {
 		code, reason := validateFinding(envelope, finding, scope, seen)
@@ -55,8 +55,8 @@ func Precheck(envelope schema.CandidateEnvelope, scope Scope) PrecheckReport {
 	return report
 }
 
-func validateFinding(envelope schema.CandidateEnvelope, finding schema.CandidateFinding, scope Scope, seen map[string]struct{}) (string, string) {
-	if envelope.Version != schema.ProtocolVersion || envelope.RunID != scope.RunID {
+func validateFinding(envelope protocol.CandidateEnvelope, finding protocol.CandidateFinding, scope Scope, seen map[string]struct{}) (string, string) {
+	if envelope.Version != protocol.ProtocolVersion || envelope.RunID != scope.RunID {
 		return "protocol-mismatch", "candidate envelope does not belong to this review"
 	}
 	if finding.Role != envelope.Role {
@@ -74,7 +74,7 @@ func validateFinding(envelope schema.CandidateEnvelope, finding schema.Candidate
 	if !finding.Severity.Valid() {
 		return "invalid-severity", "severity is not part of the protocol"
 	}
-	if finding.Role == config.RoleCodeSimplifier && finding.Severity.Rank() < schema.SeverityP2.Rank() {
+	if finding.Role == config.RoleCodeSimplifier && finding.Severity.Rank() < protocol.SeverityP2.Rank() {
 		return "severity-not-allowed", "code-simplifier may emit only P2 or P3"
 	}
 	if code, reason := validateReviewerScope(finding); code != "" {
@@ -84,7 +84,7 @@ func validateFinding(envelope schema.CandidateEnvelope, finding schema.Candidate
 		strings.TrimSpace(finding.Evidence.ViolatedInvariant) == "" || strings.TrimSpace(finding.Evidence.FalsifierChecked) == "" {
 		return "evidence-incomplete", "impact, execution path, invariant and falsifier check are required"
 	}
-	if finding.NeedsHuman && finding.Severity.Rank() <= schema.SeverityP1.Rank() {
+	if finding.NeedsHuman && finding.Severity.Rank() <= protocol.SeverityP1.Rank() {
 		return "high-severity-unproven", "P0/P1 cannot depend on unresolved human confirmation"
 	}
 	if !finding.Location.IsCode() || finding.Location.IsArtifact() {
@@ -110,7 +110,7 @@ func validateFinding(envelope schema.CandidateEnvelope, finding schema.Candidate
 	if !diffContainsLineRange(scope.Diff, path, finding.Location.LineStart, lineEnd) {
 		return "line-out-of-snapshot", "code line range is outside frozen diff hunks"
 	}
-	if finding.Severity.Rank() <= schema.SeverityP1.Rank() {
+	if finding.Severity.Rank() <= protocol.SeverityP1.Rank() {
 		if finding.Evidence.Code == nil || strings.TrimSpace(*finding.Evidence.Code) == "" {
 			return "high-severity-evidence-incomplete", "P0/P1 requires a concrete code fragment"
 		}
@@ -133,7 +133,7 @@ func denied(path string, cfg config.Config) bool {
 }
 
 func MergeCandidateReports(runID string, reports []PrecheckReport) CandidateSet {
-	set := CandidateSet{Version: schema.ProtocolVersion, RunID: runID, Findings: []schema.CandidateFinding{}}
+	set := CandidateSet{Version: protocol.ProtocolVersion, RunID: runID, Findings: []protocol.CandidateFinding{}}
 	for _, report := range reports {
 		if report.RunID == runID {
 			set.Findings = append(set.Findings, report.Accepted...)
@@ -143,7 +143,7 @@ func MergeCandidateReports(runID string, reports []PrecheckReport) CandidateSet 
 	return set
 }
 
-func sortFindings(findings []schema.CandidateFinding) {
+func sortFindings(findings []protocol.CandidateFinding) {
 	sort.SliceStable(findings, func(i, j int) bool {
 		if findings[i].Severity.Rank() != findings[j].Severity.Rank() {
 			return findings[i].Severity.Rank() < findings[j].Severity.Rank()

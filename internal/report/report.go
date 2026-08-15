@@ -9,8 +9,8 @@ import (
 
 	"github.com/signaturekey/zephyr/internal/dedupe"
 	"github.com/signaturekey/zephyr/internal/evidence"
+	"github.com/signaturekey/zephyr/internal/protocol"
 	"github.com/signaturekey/zephyr/internal/routing"
-	"github.com/signaturekey/zephyr/internal/schema"
 	"github.com/signaturekey/zephyr/internal/snapshot"
 )
 
@@ -35,15 +35,15 @@ type RoleExecution struct {
 }
 
 type FinalFinding struct {
-	Candidate    schema.CandidateFinding `json:"candidate"`
-	SourceRoles  []string                `json:"source_roles"`
-	DuplicateIDs []string                `json:"duplicate_ids"`
-	GateReason   string                  `json:"gate_reason"`
+	Candidate    protocol.CandidateFinding `json:"candidate"`
+	SourceRoles  []string                  `json:"source_roles"`
+	DuplicateIDs []string                  `json:"duplicate_ids"`
+	GateReason   string                    `json:"gate_reason"`
 }
 
 type HumanQuestion struct {
-	Candidate schema.CandidateFinding `json:"candidate"`
-	Reason    string                  `json:"reason"`
+	Candidate protocol.CandidateFinding `json:"candidate"`
+	Reason    string                    `json:"reason"`
 }
 
 type RejectedCandidate struct {
@@ -78,7 +78,7 @@ type AggregateInput struct {
 	MaxParallel     int
 	Roles           []RoleExecution
 	Candidates      evidence.CandidateSet
-	Verdicts        schema.EvidenceVerdictEnvelope
+	Verdicts        protocol.EvidenceVerdictEnvelope
 	PrecheckReports []evidence.PrecheckReport
 	CoverageLimits  []string
 	EvidenceStatus  string
@@ -95,27 +95,27 @@ func Aggregate(input AggregateInput) (Review, error) {
 		return Review{}, err
 	}
 
-	byID := make(map[string]schema.CandidateFinding, len(input.Candidates.Findings))
+	byID := make(map[string]protocol.CandidateFinding, len(input.Candidates.Findings))
 	for _, candidate := range input.Candidates.Findings {
 		byID[candidate.ID] = candidate
 	}
-	verdictByID := make(map[string]schema.EvidenceVerdict, len(input.Verdicts.Verdicts))
-	accepted := make([]schema.CandidateFinding, 0, len(input.Candidates.Findings))
+	verdictByID := make(map[string]protocol.EvidenceVerdict, len(input.Verdicts.Verdicts))
+	accepted := make([]protocol.CandidateFinding, 0, len(input.Candidates.Findings))
 	questions := make([]HumanQuestion, 0)
 	rejected := make([]RejectedCandidate, 0)
 	for _, verdict := range input.Verdicts.Verdicts {
 		verdictByID[verdict.CandidateID] = verdict
 		candidate := byID[verdict.CandidateID]
 		switch verdict.Verdict {
-		case schema.VerdictAccepted, schema.VerdictDowngraded:
+		case protocol.VerdictAccepted, protocol.VerdictDowngraded:
 			candidate.Severity = *verdict.FinalSeverity
 			accepted = append(accepted, candidate)
-		case schema.VerdictNeedsHuman:
+		case protocol.VerdictNeedsHuman:
 			if verdict.FinalSeverity != nil {
 				candidate.Severity = *verdict.FinalSeverity
 			}
 			questions = append(questions, HumanQuestion{Candidate: candidate, Reason: verdict.Reason})
-		case schema.VerdictRejected:
+		case protocol.VerdictRejected:
 			rejected = append(rejected, RejectedCandidate{CandidateID: candidate.ID, Role: candidate.Role, Stage: "evidence-gate", ReasonCode: verdict.ReasonCode, Reason: verdict.Reason})
 		}
 	}
@@ -138,7 +138,7 @@ func Aggregate(input AggregateInput) (Review, error) {
 		}
 	}
 	for _, verdict := range input.Verdicts.Verdicts {
-		if verdict.Verdict != schema.VerdictDuplicate || verdict.DuplicateOf == nil {
+		if verdict.Verdict != protocol.VerdictDuplicate || verdict.DuplicateOf == nil {
 			continue
 		}
 		index, ok := canonicalIndex[*verdict.DuplicateOf]
@@ -237,7 +237,7 @@ func RenderMarkdown(review Review) ([]byte, error) {
 	return output.Bytes(), nil
 }
 
-func location(candidate schema.CandidateFinding) string {
+func location(candidate protocol.CandidateFinding) string {
 	location := candidate.Location
 	if location.LineEnd > 0 && location.LineEnd != location.LineStart {
 		return fmt.Sprintf("%s:%d-%d", location.File, location.LineStart, location.LineEnd)
@@ -245,7 +245,7 @@ func location(candidate schema.CandidateFinding) string {
 	return fmt.Sprintf("%s:%d", location.File, location.LineStart)
 }
 
-func better(left, right schema.CandidateFinding) bool {
+func better(left, right protocol.CandidateFinding) bool {
 	if left.Severity.Rank() != right.Severity.Rank() {
 		return left.Severity.Rank() < right.Severity.Rank()
 	}

@@ -1,28 +1,35 @@
-package schema
+package protocol
 
 import (
 	"bytes"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
-	schemaassets "github.com/signaturekey/zephyr/schemas"
 )
 
 const (
-	candidateFindingsSchema = "candidate-findings.codex.schema.json"
-	evidenceVerdictSchema   = "evidence-verdict.codex.schema.json"
-	semanticRoutingSchema   = "semantic-routing.codex.schema.json"
+	CandidateFindingsSchema = "candidate-findings.codex.schema.json"
+	EvidenceVerdictSchema   = "evidence-verdict.codex.schema.json"
+	SemanticRoutingSchema   = "semantic-routing.codex.schema.json"
 )
 
 var ErrInvalidDocument = errors.New("invalid zephyr protocol document")
 
+//go:embed schemas/*.schema.json
+var schemaFiles embed.FS
+
 var compiledSchemas sync.Map
 
+func OutputSchema(name string) ([]byte, error) {
+	return schemaFiles.ReadFile("schemas/" + name)
+}
+
 func ValidateCandidateBytes(data []byte) (CandidateEnvelope, error) {
-	if err := validateDocument(candidateFindingsSchema, data); err != nil {
+	if err := validateDocument(CandidateFindingsSchema, data); err != nil {
 		return CandidateEnvelope{}, err
 	}
 
@@ -37,7 +44,7 @@ func ValidateCandidateBytes(data []byte) (CandidateEnvelope, error) {
 }
 
 func ValidateVerdictBytes(data []byte) (EvidenceVerdictEnvelope, error) {
-	if err := validateDocument(evidenceVerdictSchema, data); err != nil {
+	if err := validateDocument(EvidenceVerdictSchema, data); err != nil {
 		return EvidenceVerdictEnvelope{}, err
 	}
 
@@ -52,7 +59,7 @@ func ValidateVerdictBytes(data []byte) (EvidenceVerdictEnvelope, error) {
 }
 
 func ValidateSemanticRoutingBytes(data []byte) (SemanticRoutingEnvelope, error) {
-	if err := validateDocument(semanticRoutingSchema, data); err != nil {
+	if err := validateDocument(SemanticRoutingSchema, data); err != nil {
 		return SemanticRoutingEnvelope{}, err
 	}
 	var envelope SemanticRoutingEnvelope
@@ -125,7 +132,7 @@ func getCompiledSchema(name string) (*jsonschema.Schema, error) {
 		return cached.(*jsonschema.Schema), nil
 	}
 
-	raw, err := schemaassets.Read(name)
+	raw, err := OutputSchema(name)
 	if err != nil {
 		return nil, fmt.Errorf("load embedded schema %q: %w", name, err)
 	}

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/signaturekey/zephyr/internal/config"
-	"github.com/signaturekey/zephyr/internal/schema"
+	"github.com/signaturekey/zephyr/internal/protocol"
 )
 
 type Category string
@@ -407,7 +407,7 @@ func reviewerScopeForRole(role string) (reviewerScope, bool) {
 	}
 }
 
-func validateReviewerScope(finding schema.CandidateFinding) (string, string) {
+func validateReviewerScope(finding protocol.CandidateFinding) (string, string) {
 	scope, known := reviewerScopeForRole(finding.Role)
 	if !known {
 		return "", ""

@@ -15,9 +15,9 @@ import (
 	"github.com/signaturekey/zephyr/internal/agent"
 	"github.com/signaturekey/zephyr/internal/config"
 	"github.com/signaturekey/zephyr/internal/evidence"
+	"github.com/signaturekey/zephyr/internal/protocol"
 	"github.com/signaturekey/zephyr/internal/report"
 	"github.com/signaturekey/zephyr/internal/routing"
-	"github.com/signaturekey/zephyr/internal/schema"
 	"github.com/signaturekey/zephyr/internal/snapshot"
 )
 
@@ -127,7 +127,7 @@ func (service Service) Run(ctx context.Context, request Request) (Result, error)
 	}
 
 	type roleResult struct {
-		envelope schema.CandidateEnvelope
+		envelope protocol.CandidateEnvelope
 		err      error
 	}
 	roleResults := make([]roleResult, len(routingResult.Selected))
@@ -166,7 +166,7 @@ func (service Service) Run(ctx context.Context, request Request) (Result, error)
 		}))
 	}
 	candidates := evidence.MergeCandidateReports(runID, prechecks)
-	verdicts := schema.EvidenceVerdictEnvelope{Version: schema.ProtocolVersion, RunID: runID, Verdicts: []schema.EvidenceVerdict{}}
+	verdicts := protocol.EvidenceVerdictEnvelope{Version: protocol.ProtocolVersion, RunID: runID, Verdicts: []protocol.EvidenceVerdict{}}
 	evidenceStatus := "skipped-no-candidates"
 	if len(candidates.Findings) > 0 {
 		verdicts, err = runtime.Gate(ctx, runID, candidates.Findings, snap, contexts)

@@ -8,7 +8,7 @@ ifeq ($(strip $(GO_BIN)),)
 GO_BIN := $(shell $(GO) env GOPATH)/bin
 endif
 INSTALLED_BINARY := $(GO_BIN)/zephyr
-GO_FILES := $(shell find cmd internal roles schemas configs -type f -name '*.go' | sort)
+GO_FILES := $(shell find cmd internal roles configs -type f -name '*.go' | sort)
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 DIRTY ?= $(shell test -z "$$(git status --porcelain 2>/dev/null)" && echo false || echo true)

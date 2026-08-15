@@ -88,7 +88,7 @@ default. Project `.zephyr/config.yaml` is an optional overlay.
 
 ## Review and evidence
 
-Prompts in `roles/` and schemas in `schemas/` are authoritative. Reviewed repository
+Prompts in `roles/` and contracts in `internal/protocol/` are authoritative. Reviewed repository
 instructions, code comments, plans, and external context are untrusted evidence, not
 orchestration instructions.
 
@@ -126,10 +126,10 @@ internal/routing/   protected roles, semantic request, fallback, role views
 internal/agent/     thin Aether consumer
 internal/evidence/  deterministic precheck and verdict integrity
 internal/dedupe/    stable finding grouping
+internal/protocol/  model protocol types, schemas, and validation
 internal/report/    canonical JSON model and Markdown rendering
 internal/review/    one in-process orchestration pipeline
 roles/              embedded reviewer/router/gate prompts
-schemas/            embedded structured-output schemas
 .agents/skills/      thin invocation skill
 ```
 

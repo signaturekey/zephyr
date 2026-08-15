@@ -9,7 +9,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/signaturekey/zephyr/internal/config"
-	"github.com/signaturekey/zephyr/internal/schema"
+	"github.com/signaturekey/zephyr/internal/protocol"
 )
 
 const Version = 1
@@ -169,7 +169,7 @@ func Prepare(cfg config.Config, input Input) (Request, error) {
 	return request, nil
 }
 
-func Resolve(request Request, proposal schema.SemanticRoutingEnvelope) (Result, error) {
+func Resolve(request Request, proposal protocol.SemanticRoutingEnvelope) (Result, error) {
 	if proposal.Version != Version || proposal.RunID != request.RunID {
 		return Result{}, fmt.Errorf("%w: semantic response identity mismatch", ErrInvalid)
 	}

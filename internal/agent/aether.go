@@ -9,11 +9,10 @@ import (
 
 	"github.com/signaturekey/aether"
 	"github.com/signaturekey/zephyr/internal/config"
+	"github.com/signaturekey/zephyr/internal/protocol"
 	"github.com/signaturekey/zephyr/internal/routing"
-	"github.com/signaturekey/zephyr/internal/schema"
 	"github.com/signaturekey/zephyr/internal/snapshot"
 	roleassets "github.com/signaturekey/zephyr/roles"
-	schemaassets "github.com/signaturekey/zephyr/schemas"
 )
 
 type AetherRuntime struct {
@@ -53,70 +52,70 @@ func (runtime *AetherRuntime) Close() error {
 	return removeErr
 }
 
-func (runtime *AetherRuntime) Route(ctx context.Context, request routing.Request, snap *snapshot.Snapshot, contextFiles []ContextDocument) (schema.SemanticRoutingEnvelope, error) {
+func (runtime *AetherRuntime) Route(ctx context.Context, request routing.Request, snap *snapshot.Snapshot, contextFiles []ContextDocument) (protocol.SemanticRoutingEnvelope, error) {
 	prompt, err := routerPrompt(request, snap, contextFiles)
 	if err != nil {
-		return schema.SemanticRoutingEnvelope{}, err
+		return protocol.SemanticRoutingEnvelope{}, err
 	}
 	settings, ok := runtime.policy.Entry(config.ProcessSemanticRouter)
 	if !ok {
-		return schema.SemanticRoutingEnvelope{}, fmt.Errorf("semantic router model is not configured")
+		return protocol.SemanticRoutingEnvelope{}, fmt.Errorf("semantic router model is not configured")
 	}
-	raw, err := runtime.run(ctx, settings, prompt, "semantic-routing.codex.schema.json")
+	raw, err := runtime.run(ctx, settings, prompt, protocol.SemanticRoutingSchema)
 	if err != nil {
-		return schema.SemanticRoutingEnvelope{}, err
+		return protocol.SemanticRoutingEnvelope{}, err
 	}
-	return schema.ValidateSemanticRoutingBytes(raw)
+	return protocol.ValidateSemanticRoutingBytes(raw)
 }
 
-func (runtime *AetherRuntime) Review(ctx context.Context, runID, role string, snap *snapshot.Snapshot, contextFiles []ContextDocument) (schema.CandidateEnvelope, error) {
+func (runtime *AetherRuntime) Review(ctx context.Context, runID, role string, snap *snapshot.Snapshot, contextFiles []ContextDocument) (protocol.CandidateEnvelope, error) {
 	prompt, err := reviewerPrompt(runID, role, snap, contextFiles)
 	if err != nil {
-		return schema.CandidateEnvelope{}, err
+		return protocol.CandidateEnvelope{}, err
 	}
 	settings, ok := runtime.policy.Entry("reviewer:" + role)
 	if !ok {
-		return schema.CandidateEnvelope{}, fmt.Errorf("reviewer model for %q is not configured", role)
+		return protocol.CandidateEnvelope{}, fmt.Errorf("reviewer model for %q is not configured", role)
 	}
-	raw, err := runtime.run(ctx, settings, prompt, "candidate-findings.codex.schema.json")
+	raw, err := runtime.run(ctx, settings, prompt, protocol.CandidateFindingsSchema)
 	if err != nil {
-		return schema.CandidateEnvelope{}, err
+		return protocol.CandidateEnvelope{}, err
 	}
-	envelope, err := schema.ValidateCandidateBytes(raw)
+	envelope, err := protocol.ValidateCandidateBytes(raw)
 	if err != nil {
-		return schema.CandidateEnvelope{}, err
+		return protocol.CandidateEnvelope{}, err
 	}
 	if envelope.RunID != runID || envelope.Role != role {
-		return schema.CandidateEnvelope{}, fmt.Errorf("reviewer %q returned mismatched identity", role)
+		return protocol.CandidateEnvelope{}, fmt.Errorf("reviewer %q returned mismatched identity", role)
 	}
 	return envelope, nil
 }
 
-func (runtime *AetherRuntime) Gate(ctx context.Context, runID string, candidates []schema.CandidateFinding, snap *snapshot.Snapshot, contextFiles []ContextDocument) (schema.EvidenceVerdictEnvelope, error) {
+func (runtime *AetherRuntime) Gate(ctx context.Context, runID string, candidates []protocol.CandidateFinding, snap *snapshot.Snapshot, contextFiles []ContextDocument) (protocol.EvidenceVerdictEnvelope, error) {
 	prompt, err := gatePrompt(runID, candidates, snap, contextFiles)
 	if err != nil {
-		return schema.EvidenceVerdictEnvelope{}, err
+		return protocol.EvidenceVerdictEnvelope{}, err
 	}
 	settings, ok := runtime.policy.Entry(config.ProcessEvidenceGate)
 	if !ok {
-		return schema.EvidenceVerdictEnvelope{}, fmt.Errorf("evidence gate model is not configured")
+		return protocol.EvidenceVerdictEnvelope{}, fmt.Errorf("evidence gate model is not configured")
 	}
-	raw, err := runtime.run(ctx, settings, prompt, "evidence-verdict.codex.schema.json")
+	raw, err := runtime.run(ctx, settings, prompt, protocol.EvidenceVerdictSchema)
 	if err != nil {
-		return schema.EvidenceVerdictEnvelope{}, err
+		return protocol.EvidenceVerdictEnvelope{}, err
 	}
-	envelope, err := schema.ValidateVerdictBytes(raw)
+	envelope, err := protocol.ValidateVerdictBytes(raw)
 	if err != nil {
-		return schema.EvidenceVerdictEnvelope{}, err
+		return protocol.EvidenceVerdictEnvelope{}, err
 	}
 	if envelope.RunID != runID {
-		return schema.EvidenceVerdictEnvelope{}, fmt.Errorf("evidence gate returned mismatched run ID")
+		return protocol.EvidenceVerdictEnvelope{}, fmt.Errorf("evidence gate returned mismatched run ID")
 	}
 	return envelope, nil
 }
 
 func (runtime *AetherRuntime) run(ctx context.Context, settings config.ModelSettings, prompt, schemaName string) ([]byte, error) {
-	outputSchema, err := schemaassets.Read(schemaName)
+	outputSchema, err := protocol.OutputSchema(schemaName)
 	if err != nil {
 		return nil, fmt.Errorf("read output schema: %w", err)
 	}
@@ -141,16 +140,16 @@ func (runtime *AetherRuntime) run(ctx context.Context, settings config.ModelSett
 }
 
 func routerPrompt(request routing.Request, snap *snapshot.Snapshot, contextFiles []ContextDocument) (string, error) {
-	protocol, err := roleassets.Read("semantic-router.md")
+	instructions, err := roleassets.Read("semantic-router.md")
 	if err != nil {
 		return "", err
 	}
 	requestJSON, _ := json.MarshalIndent(request, "", "  ")
-	return string(protocol) + "\n\nROUTING REQUEST:\n" + string(requestJSON) + packetText(snap, contextFiles, snap.Diff), nil
+	return string(instructions) + "\n\nROUTING REQUEST:\n" + string(requestJSON) + packetText(snap, contextFiles, snap.Diff), nil
 }
 
 func reviewerPrompt(runID, role string, snap *snapshot.Snapshot, contextFiles []ContextDocument) (string, error) {
-	protocol, err := roleassets.Read("reviewer-protocol.md")
+	instructions, err := roleassets.Read("reviewer-protocol.md")
 	if err != nil {
 		return "", err
 	}
@@ -161,21 +160,21 @@ func reviewerPrompt(runID, role string, snap *snapshot.Snapshot, contextFiles []
 	paths := routing.RelevantPaths(role, snap.ChangedPaths)
 	diff := filterDiff(snap.Diff, paths)
 	identity := fmt.Sprintf("\n\nRUN ID: %s\nROLE: %s\n", runID, role)
-	return string(protocol) + "\n\n" + string(rolePrompt) + identity + packetText(snap, contextFiles, diff), nil
+	return string(instructions) + "\n\n" + string(rolePrompt) + identity + packetText(snap, contextFiles, diff), nil
 }
 
-func gatePrompt(runID string, candidates []schema.CandidateFinding, snap *snapshot.Snapshot, contextFiles []ContextDocument) (string, error) {
-	protocol, err := roleassets.Read("evidence-gate.md")
+func gatePrompt(runID string, candidates []protocol.CandidateFinding, snap *snapshot.Snapshot, contextFiles []ContextDocument) (string, error) {
+	instructions, err := roleassets.Read("evidence-gate.md")
 	if err != nil {
 		return "", err
 	}
 	payload := struct {
-		Version    int                       `json:"version"`
-		RunID      string                    `json:"run_id"`
-		Candidates []schema.CandidateFinding `json:"candidates"`
+		Version    int                         `json:"version"`
+		RunID      string                      `json:"run_id"`
+		Candidates []protocol.CandidateFinding `json:"candidates"`
 	}{Version: 1, RunID: runID, Candidates: candidates}
 	candidateJSON, _ := json.MarshalIndent(payload, "", "  ")
-	return string(protocol) + "\n\nPRECHECKED CANDIDATES:\n" + string(candidateJSON) + packetText(snap, contextFiles, snap.Diff), nil
+	return string(instructions) + "\n\nPRECHECKED CANDIDATES:\n" + string(candidateJSON) + packetText(snap, contextFiles, snap.Diff), nil
 }
 
 func packetText(snap *snapshot.Snapshot, contextFiles []ContextDocument, diff string) string {

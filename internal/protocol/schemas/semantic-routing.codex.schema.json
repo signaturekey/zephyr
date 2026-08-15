@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://zephyr.local/schemas/v1/semantic-routing.codex.schema.json",
+  "$id": "https://zephyr.local/protocol/v1/semantic-routing.codex.schema.json",
   "title": "Zephyr semantic routing decision v1 for Codex structured output",
   "type": "object",
   "additionalProperties": false,

@@ -10,8 +10,8 @@ import (
 
 	"github.com/signaturekey/zephyr/internal/agent"
 	"github.com/signaturekey/zephyr/internal/config"
+	"github.com/signaturekey/zephyr/internal/protocol"
 	"github.com/signaturekey/zephyr/internal/routing"
-	"github.com/signaturekey/zephyr/internal/schema"
 	"github.com/signaturekey/zephyr/internal/snapshot"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,37 +22,37 @@ type fakeRuntime struct {
 	gateRuns int
 }
 
-func (runtime *fakeRuntime) Route(_ context.Context, request routing.Request, _ *snapshot.Snapshot, _ []agent.ContextDocument) (schema.SemanticRoutingEnvelope, error) {
-	result := schema.SemanticRoutingEnvelope{Version: 1, RunID: request.RunID}
+func (runtime *fakeRuntime) Route(_ context.Context, request routing.Request, _ *snapshot.Snapshot, _ []agent.ContextDocument) (protocol.SemanticRoutingEnvelope, error) {
+	result := protocol.SemanticRoutingEnvelope{Version: 1, RunID: request.RunID}
 	for _, candidate := range request.Candidates {
-		result.Decisions = append(result.Decisions, schema.SemanticRoutingDecision{Role: candidate.Role, Decision: "exclude", EvidenceRefs: []string{"snapshot.diff"}, Reason: "not relevant", Confidence: 1})
+		result.Decisions = append(result.Decisions, protocol.SemanticRoutingDecision{Role: candidate.Role, Decision: "exclude", EvidenceRefs: []string{"snapshot.diff"}, Reason: "not relevant", Confidence: 1})
 	}
 	return result, nil
 }
 
-func (runtime *fakeRuntime) Review(_ context.Context, runID, role string, _ *snapshot.Snapshot, _ []agent.ContextDocument) (schema.CandidateEnvelope, error) {
-	envelope := schema.CandidateEnvelope{Version: 1, RunID: runID, Role: role, Findings: []schema.CandidateFinding{}}
+func (runtime *fakeRuntime) Review(_ context.Context, runID, role string, _ *snapshot.Snapshot, _ []agent.ContextDocument) (protocol.CandidateEnvelope, error) {
+	envelope := protocol.CandidateEnvelope{Version: 1, RunID: runID, Role: role, Findings: []protocol.CandidateFinding{}}
 	if role != config.RoleCodeReviewer {
 		return envelope, nil
 	}
 	code := "const value = 2"
-	envelope.Findings = append(envelope.Findings, schema.CandidateFinding{
-		ID: role + "-001", Role: role, Severity: schema.SeverityP1, Category: "correctness", Title: "invalid value",
-		Location: schema.FindingLocation{File: "main.go", LineStart: 3},
-		Evidence: schema.FindingEvidence{Code: &code, ExecutionPath: "changed constant is consumed", ViolatedInvariant: "value must stay one", FalsifierChecked: "no caller correction"},
+	envelope.Findings = append(envelope.Findings, protocol.CandidateFinding{
+		ID: role + "-001", Role: role, Severity: protocol.SeverityP1, Category: "correctness", Title: "invalid value",
+		Location: protocol.FindingLocation{File: "main.go", LineStart: 3},
+		Evidence: protocol.FindingEvidence{Code: &code, ExecutionPath: "changed constant is consumed", ViolatedInvariant: "value must stay one", FalsifierChecked: "no caller correction"},
 		Impact:   "consumer fails", Recommendation: "restore valid value", Confidence: 0.9,
 	})
 	return envelope, nil
 }
 
-func (runtime *fakeRuntime) Gate(_ context.Context, runID string, candidates []schema.CandidateFinding, _ *snapshot.Snapshot, _ []agent.ContextDocument) (schema.EvidenceVerdictEnvelope, error) {
+func (runtime *fakeRuntime) Gate(_ context.Context, runID string, candidates []protocol.CandidateFinding, _ *snapshot.Snapshot, _ []agent.ContextDocument) (protocol.EvidenceVerdictEnvelope, error) {
 	runtime.mu.Lock()
 	runtime.gateRuns++
 	runtime.mu.Unlock()
-	result := schema.EvidenceVerdictEnvelope{Version: 1, RunID: runID}
+	result := protocol.EvidenceVerdictEnvelope{Version: 1, RunID: runID}
 	for _, candidate := range candidates {
 		severity := candidate.Severity
-		result.Verdicts = append(result.Verdicts, schema.EvidenceVerdict{CandidateID: candidate.ID, Verdict: schema.VerdictAccepted, FinalSeverity: &severity, ReasonCode: "evidence-complete", Reason: "supported"})
+		result.Verdicts = append(result.Verdicts, protocol.EvidenceVerdict{CandidateID: candidate.ID, Verdict: protocol.VerdictAccepted, FinalSeverity: &severity, ReasonCode: "evidence-complete", Reason: "supported"})
 	}
 	return result, nil
 }

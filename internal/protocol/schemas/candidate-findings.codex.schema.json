@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://zephyr.local/schemas/v1/candidate-findings.codex.schema.json",
+  "$id": "https://zephyr.local/protocol/v1/candidate-findings.codex.schema.json",
   "title": "Zephyr candidate findings Codex output envelope v1",
   "type": "object",
   "additionalProperties": false,

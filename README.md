@@ -56,8 +56,6 @@ Zephyr сейчас ревьюит изменения кода. Отдельны
 текущей реализации нет. Спецификацию или бизнес-требования можно приложить как
 замороженный контекст к code review.
 
-[К навигации](#navigation)
-
 <a id="how-it-is-different"></a>
 ## Чем он отличается от обычного AI-review
 
@@ -84,8 +82,6 @@ agent definitions, compatibility probe, постоянной state machine за�
 - роли не видят вывод друг друга;
 - сбой одной роли снижает покрытие, но не стирает результаты остальных;
 - неподтверждённые кандидаты не попадают в отчёт как findings.
-
-[К навигации](#navigation)
 
 <a id="quick-start"></a>
 ## Быстрый старт
@@ -140,8 +136,6 @@ Markdown всегда печатается в stdout. При необходим�
 zephyr review --output review.md --json-output review.json
 ```
 
-[К навигации](#navigation)
-
 <a id="maintenance"></a>
 ## Обновление и удаление
 
@@ -168,8 +162,6 @@ make uninstall
 `GOPATH/bin`. Исходники, конфиги и локальный `bin/zephyr`, созданный через
 `make build`, эти команды не меняют.
 
-[К навигации](#navigation)
-
 <a id="review-flow"></a>
 ## Как проходит ревью
 
@@ -190,8 +182,6 @@ Evidence gate запускается один раз и только при на
 Если reviewer завершился с ошибкой, Zephyr продолжает работу и добавляет явное
 ограничение покрытия. Если evidence gate не завершился корректно, весь запуск
 завершается ошибкой: непроверенные кандидаты не выдаются за подтверждённые.
-
-[К навигации](#navigation)
 
 <a id="sources"></a>
 ## Источники изменений и Git scope
@@ -248,8 +238,6 @@ zephyr review --config /path/to/config.yaml
 Отчёт привязан к SHA, зафиксированным в снапшоте. Финальной проверки drift исходного
 worktree после ревью сейчас нет.
 
-[К навигации](#navigation)
-
 <a id="roles"></a>
 ## Роли и routing
 
@@ -287,8 +275,6 @@ worktree после ревью сейчас нет.
 diff, полный индекс изменённых путей и доступ на чтение к общему замороженному
 снапшоту для проверки зависимого кода. Роль не видит исходный путь пользовательского
 checkout и результаты других ролей.
-
-[К навигации](#navigation)
 
 <a id="result"></a>
 ## Результат ревью
@@ -338,8 +324,6 @@ JSON содержит scope, routing, выбранные роли, статус 
 
 Findings — данные отчёта, а не ошибка процесса.
 
-[К навигации](#navigation)
-
 <a id="external-context"></a>
 ## Внешний контекст и MCP
 
@@ -362,8 +346,6 @@ CLI Zephyr не содержит Jira-, Confluence-, Bitbucket- или MCP-кл�
 
 Zephyr и skill не пишут комментарии, статусы или изменения во внешние системы.
 
-[К навигации](#navigation)
-
 <a id="configuration"></a>
 ## Конфигурация
 
@@ -377,51 +359,11 @@ Zephyr всегда начинает со встроенного `configs/defaul
 2. иначе `.zephyr/config.yaml` из замороженного снапшота, если он существует;
 3. иначе остаются только встроенные defaults.
 
-Пример небольшого project overlay, использующего настройки текущего runtime:
-
-```yaml
-version: 1
-
-limits:
-  max_parallel_reviewers: 4
-
-roles:
-  code-simplifier:
-    enabled: false
-
-model_policy:
-  stages:
-    semantic_router:
-      model: gpt-5.6-terra
-      effort: high
-    reviewers:
-      roles:
-        security-auditor:
-          model: gpt-5.6-sol
-          effort: xhigh
-    evidence_gate:
-      model: gpt-5.6-sol
-      effort: xhigh
-
-routing:
-  - when:
-      paths:
-        - "db/**"
-        - "**/*.sql"
-    add_roles:
-      - sql-expert
-
-restricted_paths:
-  - "third_party/**"
-```
-
 Текущая pipeline использует из конфигурации concurrency, enablement ролей,
 routing rules, model/effort для semantic router, reviewers и evidence gate, а также
 path policies детерминированного precheck. Некоторые совместимые поля встроенного
 конфига сохранены для формата конфигурации, но не должны считаться отдельными
 runtime-стадиями.
-
-[К навигации](#navigation)
 
 <a id="safety"></a>
 ## Гарантии read-only и изоляция
@@ -449,8 +391,6 @@ reviewer может читать разрешённые supporting files из з
 Non-ignored untracked файлы входят в worktree-снапшот автоматически. Поэтому секреты
 должны быть gitignored или не находиться в передаваемом scope.
 
-[К навигации](#navigation)
-
 <a id="limitations"></a>
 ## Ограничения
 
@@ -469,8 +409,6 @@ Non-ignored untracked файлы входят в worktree-снапшот авт�
 - Non-ignored untracked файлы включаются в worktree review без отдельного prompt.
 - Read-only Git-команды могут учитывать пользовательскую Git-конфигурацию; текущая
   реализация не выполняет отдельный preflight внешних clean/process filters.
-
-[К навигации](#navigation)
 
 <a id="troubleshooting"></a>
 ## Диагностика
@@ -492,8 +430,6 @@ Non-ignored untracked файлы входят в worktree-снапшот авт�
 zephyr review --help
 zephyr version
 ```
-
-[К навигации](#navigation)
 
 <a id="development"></a>
 ## Разработка
@@ -521,5 +457,3 @@ fake runtime boundary, а snapshot-сценарии — на временных 
 сценарии оценки качества, не заменяющие автоматические correctness tests.
 
 Правила проекта и актуальные продуктовые границы описаны в [`AGENTS.md`](AGENTS.md).
-
-[К навигации](#navigation)

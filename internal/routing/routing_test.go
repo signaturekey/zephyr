@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/signaturekey/zephyr/internal/config"
-	"github.com/signaturekey/zephyr/internal/schema"
+	"github.com/signaturekey/zephyr/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,9 +24,9 @@ func TestResolveAndFallbackAccountForEveryOptionalRole(t *testing.T) {
 	require.NoError(t, err)
 	request, err := Prepare(cfg, Input{RunID: "run", ChangedPaths: []string{"README.md"}})
 	require.NoError(t, err)
-	proposal := schema.SemanticRoutingEnvelope{Version: 1, RunID: "run"}
+	proposal := protocol.SemanticRoutingEnvelope{Version: 1, RunID: "run"}
 	for _, candidate := range request.Candidates {
-		proposal.Decisions = append(proposal.Decisions, schema.SemanticRoutingDecision{
+		proposal.Decisions = append(proposal.Decisions, protocol.SemanticRoutingDecision{
 			Role: candidate.Role, Decision: "exclude", EvidenceRefs: []string{"snapshot.diff"}, Reason: "scope is unrelated", Confidence: 1,
 		})
 	}

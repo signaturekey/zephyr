@@ -4,18 +4,18 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/signaturekey/zephyr/internal/schema"
+	"github.com/signaturekey/zephyr/internal/protocol"
 )
 
 type Group struct {
-	Canonical    schema.CandidateFinding   `json:"canonical"`
-	Members      []schema.CandidateFinding `json:"members"`
-	SourceRoles  []string                  `json:"source_roles"`
-	DuplicateIDs []string                  `json:"duplicate_ids"`
+	Canonical    protocol.CandidateFinding   `json:"canonical"`
+	Members      []protocol.CandidateFinding `json:"members"`
+	SourceRoles  []string                    `json:"source_roles"`
+	DuplicateIDs []string                    `json:"duplicate_ids"`
 }
 
-func GroupFindings(findings []schema.CandidateFinding) []Group {
-	ordered := append([]schema.CandidateFinding(nil), findings...)
+func GroupFindings(findings []protocol.CandidateFinding) []Group {
+	ordered := append([]protocol.CandidateFinding(nil), findings...)
 	sort.SliceStable(ordered, func(i, j int) bool { return better(ordered[i], ordered[j]) })
 
 	groups := make([]Group, 0, len(ordered))
@@ -30,7 +30,7 @@ func GroupFindings(findings []schema.CandidateFinding) []Group {
 		if groupIndex == -1 {
 			groups = append(groups, Group{
 				Canonical:    finding,
-				Members:      []schema.CandidateFinding{finding},
+				Members:      []protocol.CandidateFinding{finding},
 				SourceRoles:  []string{finding.Role},
 				DuplicateIDs: []string{},
 			})
@@ -49,7 +49,7 @@ func GroupFindings(findings []schema.CandidateFinding) []Group {
 	return groups
 }
 
-func Equivalent(left, right schema.CandidateFinding) bool {
+func Equivalent(left, right protocol.CandidateFinding) bool {
 	if normalize(left.Category) != normalize(right.Category) ||
 		normalize(left.Evidence.ViolatedInvariant) != normalize(right.Evidence.ViolatedInvariant) ||
 		normalize(left.Evidence.ExecutionPath) != normalize(right.Evidence.ExecutionPath) ||
@@ -59,7 +59,7 @@ func Equivalent(left, right schema.CandidateFinding) bool {
 	return locationsOverlap(left.Location, right.Location)
 }
 
-func locationsOverlap(left, right schema.FindingLocation) bool {
+func locationsOverlap(left, right protocol.FindingLocation) bool {
 	if left.IsCode() != right.IsCode() || left.IsArtifact() != right.IsArtifact() {
 		return false
 	}
@@ -78,7 +78,7 @@ func locationsOverlap(left, right schema.FindingLocation) bool {
 	return leftStart <= rightEnd && rightStart <= leftEnd
 }
 
-func lineRange(location schema.FindingLocation) (int, int) {
+func lineRange(location protocol.FindingLocation) (int, int) {
 	start := location.LineStart
 	end := location.LineEnd
 	if end == 0 {
@@ -87,7 +87,7 @@ func lineRange(location schema.FindingLocation) (int, int) {
 	return start, end
 }
 
-func better(left, right schema.CandidateFinding) bool {
+func better(left, right protocol.CandidateFinding) bool {
 	if left.Severity.Rank() != right.Severity.Rank() {
 		return left.Severity.Rank() < right.Severity.Rank()
 	}

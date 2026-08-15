@@ -14,22 +14,22 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/signaturekey/zephyr/internal/config"
 	"github.com/signaturekey/zephyr/internal/evidence"
+	"github.com/signaturekey/zephyr/internal/protocol"
 	"github.com/signaturekey/zephyr/internal/report"
 	"github.com/signaturekey/zephyr/internal/routing"
-	"github.com/signaturekey/zephyr/internal/schema"
 	"github.com/signaturekey/zephyr/internal/snapshot"
 	"github.com/stretchr/testify/require"
 )
 
 type fixture struct {
-	Version      int                       `json:"version"`
-	ID           string                    `json:"id"`
-	Description  string                    `json:"description"`
-	Files        []fixtureFile             `json:"files"`
-	ChangedFiles []string                  `json:"changed_files"`
-	Candidates   []schema.CandidateFinding `json:"candidates"`
-	Verdicts     []schema.EvidenceVerdict  `json:"verdicts"`
-	Expected     fixtureExpected           `json:"expected"`
+	Version      int                         `json:"version"`
+	ID           string                      `json:"id"`
+	Description  string                      `json:"description"`
+	Files        []fixtureFile               `json:"files"`
+	ChangedFiles []string                    `json:"changed_files"`
+	Candidates   []protocol.CandidateFinding `json:"candidates"`
+	Verdicts     []protocol.EvidenceVerdict  `json:"verdicts"`
+	Expected     fixtureExpected             `json:"expected"`
 }
 
 type fixtureFile struct {
@@ -48,10 +48,10 @@ type fixtureExpected struct {
 }
 
 type fixtureFinal struct {
-	ID           string          `json:"id"`
-	Severity     schema.Severity `json:"severity"`
-	SourceRoles  []string        `json:"source_roles"`
-	DuplicateIDs []string        `json:"duplicate_ids"`
+	ID           string            `json:"id"`
+	Severity     protocol.Severity `json:"severity"`
+	SourceRoles  []string          `json:"source_roles"`
+	DuplicateIDs []string          `json:"duplicate_ids"`
 }
 
 func TestImplementationGoldenFixtures(t *testing.T) {
@@ -69,17 +69,17 @@ func TestImplementationGoldenFixtures(t *testing.T) {
 			decoder := json.NewDecoder(bytes.NewReader(data))
 			decoder.DisallowUnknownFields()
 			require.NoError(t, decoder.Decode(&input))
-			require.Equal(t, schema.ProtocolVersion, input.Version)
+			require.Equal(t, protocol.ProtocolVersion, input.Version)
 			require.Equal(t, filepath.Base(filepath.Dir(path)), input.ID)
 			require.NotEmpty(t, input.Description)
 			diff := fixtureDiff(input.Files)
-			byRole := make(map[string][]schema.CandidateFinding)
+			byRole := make(map[string][]protocol.CandidateFinding)
 			for _, candidate := range input.Candidates {
 				byRole[candidate.Role] = append(byRole[candidate.Role], candidate)
 			}
 			var prechecks []evidence.PrecheckReport
 			for role, findings := range byRole {
-				prechecks = append(prechecks, evidence.Precheck(schema.CandidateEnvelope{Version: 1, RunID: input.ID, Role: role, Findings: findings}, evidence.Scope{
+				prechecks = append(prechecks, evidence.Precheck(protocol.CandidateEnvelope{Version: 1, RunID: input.ID, Role: role, Findings: findings}, evidence.Scope{
 					RunID: input.ID, Diff: diff, ChangedFiles: input.ChangedFiles, Config: cfg,
 				}))
 			}
@@ -91,7 +91,7 @@ func TestImplementationGoldenFixtures(t *testing.T) {
 			require.Equal(t, input.Expected.PrecheckAccepted, accepted)
 			require.Equal(t, input.Expected.PrecheckRejected, rejected)
 			candidates := evidence.MergeCandidateReports(input.ID, prechecks)
-			verdicts := schema.EvidenceVerdictEnvelope{Version: 1, RunID: input.ID, Verdicts: input.Verdicts}
+			verdicts := protocol.EvidenceVerdictEnvelope{Version: 1, RunID: input.ID, Verdicts: input.Verdicts}
 			result, err := report.Aggregate(report.AggregateInput{
 				RunID: input.ID, GeneratedAt: time.Unix(1, 0),
 				Scope:   report.Scope{Source: snapshot.SourceWorktree, HeadSHA: "head", BaseSHA: "base", ChangedFiles: input.ChangedFiles},
