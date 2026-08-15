@@ -1,6 +1,6 @@
 ---
 name: zephyr
-description: Run one local, read-only, evidence-gated Zephyr review of worktree, commit, or branch changes. Use only when the user explicitly invokes Zephyr, names the zephyr skill, or asks to "run/start Zephyr" or "прогнать/запустить зефир". Do not trigger for a generic code review, audit, test question, or request that does not explicitly name Zephyr.
+description: Run one local, read-only, evidence-gated Zephyr review of worktree, commit, or branch changes. Use only when the user explicitly invokes Zephyr, names the zephyr skill, or asks to "run/start Zephyr". Do not trigger for a generic code review, audit, test question, or request that does not explicitly name Zephyr.
 ---
 
 # Zephyr review

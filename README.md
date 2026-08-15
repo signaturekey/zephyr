@@ -94,11 +94,14 @@ agent definitions, compatibility probe, постоянной state machine за�
 
 ### Установка
 
-Из корня репозитория:
+Установить CLI вместе с пользовательским Codex skill:
 
 ```bash
-go install ./cmd/zephyr
+make install
 ```
+
+Skill устанавливается в `$HOME/.agents/skills/zephyr`. Только CLI можно установить
+через `go install ./cmd/zephyr`.
 
 Или собрать бинарник локально:
 
@@ -151,16 +154,18 @@ make update
 make update UPDATE_VERSION=v0.1.0
 ```
 
-Удалить установленный через `go install` бинарник:
+Удалить CLI и установленный пользовательский skill:
 
 ```bash
 make uninstall
 ```
 
-`update` устанавливает `github.com/signaturekey/zephyr/cmd/zephyr@latest`.
-`uninstall` удаляет только `zephyr` из `GOBIN`, а если `GOBIN` пуст — из
-`GOPATH/bin`. Исходники, конфиги и локальный `bin/zephyr`, созданный через
-`make build`, эти команды не меняют.
+`update` устанавливает только CLI из
+`github.com/signaturekey/zephyr/cmd/zephyr@latest`. `uninstall` удаляет `zephyr` из
+`GOBIN` (или `GOPATH/bin`) и skill из `$HOME/.agents/skills/zephyr`. Исходники,
+конфиги и локальный `bin/zephyr`, созданный через `make build`, эти команды не
+меняют. После `make install`, `make update` или `make uninstall` перезапустите
+Codex, чтобы применить изменения; каждая из этих команд также напомнит об этом.
 
 <a id="review-flow"></a>
 ## Как проходит ревью

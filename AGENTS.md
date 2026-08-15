@@ -11,7 +11,9 @@ This file is the source of truth for the current Zephyr architecture.
 - Preserve the user's checkout. Git writes are allowed only inside a new disposable
   snapshot directory created by Zephyr.
 - Keep changes focused. Do not restore the removed stage machine, Codex dispatcher,
-  harness installer, private `CODEX_HOME`, asset checksums, or compatibility probes.
+  harness installer framework, private `CODEX_HOME`, asset checksums, or compatibility
+  probes. `make install` and `make uninstall` may only copy or remove the thin user
+  skill at `$HOME/.agents/skills/zephyr` alongside the CLI.
 
 ## Product
 
