@@ -5,19 +5,10 @@ Zephyr — локальный read-only ревьюер изменений код
 [Aether](https://github.com/signaturekey/aether), проверяет доказательства в
 `evidence gate` и собирает единый Markdown-отчёт.
 
-```text
-snapshot -> routing -> parallel reviewers -> evidence gate -> report
-```
-
-Zephyr не исправляет код, не меняет исходный репозиторий и не пишет во внешние
-системы. Его задача — дать независимое ревью конкретного набора изменений до
-коммита, push или pull request.
-
 <a id="navigation"></a>
 ## Навигация
 
-- [Что решает Zephyr](#what-zephyr-solves)
-- [Чем он отличается от обычного AI-review](#how-it-is-different)
+- [Архитектура](#architecture)
 - [Быстрый старт](#quick-start)
 - [Обновление и удаление](#maintenance)
 - [Как проходит ревью](#review-flow)
@@ -31,33 +22,8 @@ Zephyr не исправляет код, не меняет исходный ре
 - [Диагностика](#troubleshooting)
 - [Разработка](#development)
 
-<a id="what-zephyr-solves"></a>
-## Что решает Zephyr
-
-Zephyr поддерживает три практических сценария:
-
-| Сценарий | Что проверяется |
-| --- | --- |
-| Локальная работа | Staged, unstaged, удалённые, переименованные и non-ignored untracked изменения относительно `HEAD` |
-| Один коммит | Изменения коммита относительно первого родителя; root commit сравнивается с пустым Git tree |
-| Ветка | Изменения от `merge-base(base, branch)` до выбранной ветки |
-
-Для каждого запуска Zephyr:
-
-1. создаёт отдельный временный клон;
-2. фиксирует точный diff и состояние файлов;
-3. выбирает все релевантные роли;
-4. запускает роли изолированно и параллельно;
-5. детерминированно отбрасывает кандидатов без достаточной опоры на diff;
-6. передаёт оставшиеся замечания в отдельный `evidence gate`;
-7. печатает один отчёт со всеми подтверждёнными замечаниями P0–P3 и ограничениями покрытия.
-
-Zephyr сейчас ревьюит изменения кода. Отдельных plan-only и alignment-режимов в
-текущей реализации нет. Спецификацию или бизнес-требования можно приложить как
-замороженный контекст к code review.
-
-<a id="how-it-is-different"></a>
-## Чем он отличается от обычного AI-review
+<a id="architecture"></a>
+## Архитектура
 
 Zephyr разделяет детерминированную механику и модельное суждение:
 
@@ -67,21 +33,7 @@ Zephyr разделяет детерминированную механику и
 | Aether | Go-клиент к Codex App Server, lifecycle соединения и изолированных threads |
 | Semantic router | Выбор только необязательных ролей из закрытого списка |
 | Reviewer roles | Поиск проблем в своей узкой области |
-| Evidence gate | Проверка уже найденных кандидатов; новые замечания он создавать не может |
-
-Внутри Zephyr нет shell-dispatcher, приватного `CODEX_HOME`, устанавливаемых
-agent definitions, compatibility probe, постоянной state machine запуска,
-собственного MCP-клиента, базы данных, сервера или web UI. Codex App Server
-подключён как обычная Go-зависимость через Aether.
-
-Ключевые свойства:
-
-- один запуск всегда привязан к одному замороженному снапшоту;
-- обязательные роли нельзя потерять из-за ответа semantic router;
-- повреждённый или неполный routing приводит к консервативному fallback;
-- роли не видят вывод друг друга;
-- сбой одной роли снижает покрытие, но не стирает результаты остальных;
-- неподтверждённые кандидаты не попадают в отчёт как findings.
+| Evidence gate | Вердикт по кандидатам, прошедшим deterministic precheck |
 
 <a id="quick-start"></a>
 ## Быстрый старт
@@ -114,8 +66,6 @@ make build
 ./bin/zephyr version
 ```
 
-Aether уже указан в `go.mod`; отдельно устанавливать SDK не нужно.
-
 ### Первое ревью
 
 Текущие локальные изменения:
@@ -124,23 +74,10 @@ Aether уже указан в `go.mod`; отдельно устанавлива�
 zephyr review
 ```
 
-Явно указанный репозиторий:
-
-```bash
-zephyr review --worktree --repo /path/to/repository
-```
-
 Через Codex skill достаточно явно попросить:
 
 ```text
 Прогони Zephyr по текущим локальным изменениям.
-```
-
-Markdown всегда печатается в stdout. При необходимости его можно одновременно
-сохранить вместе с JSON:
-
-```bash
-zephyr review --output review.md --json-output review.json
 ```
 
 <a id="maintenance"></a>
@@ -211,8 +148,7 @@ zephyr review --worktree --repo /path/to/repository
 - клонирует его без submodules;
 - применяет combined binary diff относительно `HEAD`;
 - копирует non-ignored untracked обычные файлы и безопасные symlinks;
-- не требует clean working tree и не различает staged/unstaged как отдельные режимы;
-- никогда не изменяет исходный checkout.
+- не требует clean working tree и не различает staged/unstaged как отдельные режимы.
 
 ### Commit
 
@@ -245,9 +181,6 @@ zephyr review --config /path/to/config.yaml
 
 `--max-parallel` ограничивает только конкурентность. Он не обрезает число выбранных
 ролей и не является лимитом покрытия.
-
-Отчёт привязан к SHA, зафиксированным в снапшоте. Финальной проверки drift исходного
-worktree после ревью сейчас нет.
 
 <a id="roles"></a>
 ## Роли и routing
@@ -364,26 +297,19 @@ MCP tools. Недоступный, устаревший или усечённы�
 покрытия. Текст внешнего контекста считается недоверенным evidence, а не инструкцией
 для orchestration.
 
-Zephyr и skill не пишут комментарии, статусы или изменения во внешние системы.
-
 <a id="configuration"></a>
 ## Конфигурация
 
-Встроенный [`configs/default.yaml`](configs/default.yaml) остаётся полным out-of-box
-конфигом. Для обычного запуска создавать проектный конфиг не нужно.
-
-Zephyr всегда начинает со встроенного `configs/default.yaml` и накладывает на него
-один project overlay:
+Zephyr всегда начинает со встроенного [`configs/default.yaml`](configs/default.yaml)
+и накладывает на него не более одного project overlay:
 
 1. файл из `--config`, если флаг указан;
 2. иначе `.zephyr/config.yaml` из замороженного снапшота, если он существует;
 3. иначе остаются только встроенные defaults.
 
-Текущая pipeline использует из конфигурации concurrency, enablement ролей,
-routing rules, model/effort для semantic router, reviewers и evidence gate, а также
-path policies детерминированного precheck. Некоторые совместимые поля встроенного
-конфига сохранены для формата конфигурации, но не должны считаться отдельными
-runtime-стадиями.
+Конфигурация управляет concurrency, enablement ролей, routing rules, model/effort для
+semantic router, reviewers и evidence gate, а также path policies детерминированного
+precheck.
 
 <a id="safety"></a>
 ## Гарантии read-only и изоляция
@@ -393,9 +319,7 @@ runtime-стадиями.
 - Zephyr не выполняет в пользовательском checkout `add`, `commit`, `checkout`,
   `switch`, `reset`, `clean`, `stash`, `merge`, `rebase`, `push` или создание веток;
 - все изменения воспроизводятся только внутри нового временного клона;
-- submodules не инициализируются;
-- снапшот удаляется только после проверки, что это созданный Zephyr temp root;
-- `--keep-temp` — единственный штатный способ оставить его после запуска.
+- снапшот удаляется только после проверки, что это созданный Zephyr temp root.
 
 ### Agent runtime
 
@@ -407,9 +331,8 @@ runtime-стадиями.
 - ответы ограничены JSON Schema.
 
 Read-only sandbox защищает от записи, но не является границей конфиденциальности:
-reviewer может читать разрешённые supporting files из замороженного снапшота.
-Non-ignored untracked файлы входят в worktree-снапшот автоматически. Поэтому секреты
-должны быть gitignored или не находиться в передаваемом scope.
+reviewer может читать разрешённые supporting files из замороженного снапшота. Секреты
+должны быть gitignored или находиться вне передаваемого scope.
 
 <a id="limitations"></a>
 ## Ограничения
@@ -418,15 +341,11 @@ Non-ignored untracked файлы входят в worktree-снапшот авт�
   diff и отдельного alignment mode нет.
 - Прямого режима «дай PR URL и сам получи provider metadata» нет. Для удалённого
   репозитория используются `--commit` или `--branch ... --base ...`.
-- CLI сам не читает MCP и не получает бизнес-контекст: его нужно передать через
-  `--context` или явно запустить Codex skill.
 - Zephyr не запускает build, lint, unit tests или CI вместо reviewer roles.
-- Для реального ревью нужны рабочие Codex App Server и пользовательская авторизация.
 - Модельные ответы не обязаны быть byte-identical между запусками; Git scope,
   routing invariants, схемы и агрегация при этом фиксированы кодом.
 - Финальной проверки изменения исходного worktree после создания снапшота нет;
   отчёт относится к SHA и содержимому уже созданного снапшота.
-- Non-ignored untracked файлы включаются в worktree review без отдельного prompt.
 - Read-only Git-команды могут учитывать пользовательскую Git-конфигурацию; текущая
   реализация не выполняет отдельный preflight внешних clean/process filters.
 
@@ -439,9 +358,9 @@ Non-ignored untracked файлы входят в worktree-снапшот авт�
 | Ошибка подключения или авторизации Codex | Проверить локальный Codex, App Server и действующую пользовательскую сессию |
 | Нет изменений для ревью | Проверить выбранный source: worktree, commit либо пара `--branch` + `--base` |
 | Branch/ref не разрешается | Проверить имя ref и доступность remote; для URL также проверить сетевой доступ и credentials Git |
-| Semantic router завершился ошибкой | Zephyr включит нерешённые роли через fallback и отразит degradation в отчёте |
-| Один reviewer завершился ошибкой | Результаты остальных сохранятся, а роль появится в `coverage_limits` |
-| Evidence gate завершился ошибкой | Запуск вернёт exit code `1`; кандидаты не станут подтверждёнными findings |
+| Semantic router завершился ошибкой | Проверить routing и `coverage_limits` в отчёте |
+| Один reviewer завершился ошибкой | Проверить ошибку роли и `coverage_limits` в отчёте |
+| Evidence gate завершился ошибкой | Проверить stderr, доступность runtime и корректность model output |
 | Нужен снапшот для разбора | Повторить запуск с `--keep-temp`; путь будет выведен в stderr |
 
 Для проверки доступных аргументов:
