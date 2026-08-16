@@ -53,5 +53,10 @@ Run Zephyr once. Its Markdown stdout is the user-facing report. Use `--output` a
 `--json-output` only when the user asks to persist artifacts. Do not hide reported P3
 findings or failed-role limitations.
 
+Before answering the user, read
+[references/output-format.md](references/output-format.md) completely and present the
+report in that format. Use only Zephyr's stdout; do not reconstruct findings from
+rejected candidates or reviewer prose.
+
 Zephyr findings are review output only. Never edit code, commit, push, create branches,
 or publish comments unless the user separately requests that action.
