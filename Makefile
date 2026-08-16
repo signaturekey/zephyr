@@ -16,14 +16,17 @@ HARNESS_SKILL_TARGET := $(HARNESS_SKILLS_DIR)/zephyr
 CODEX_RESTART_MESSAGE := Перезапустите Codex, чтобы применить изменения Zephyr.
 GO_FILES := $(shell find cmd internal roles configs -type f -name '*.go' | sort)
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
+ZEPHYR_RELEASE_VERSION := $(strip $(VERSION))
+export ZEPHYR_RELEASE_VERSION
 COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 DIRTY ?= $(shell test -z "$$(git status --porcelain 2>/dev/null)" && echo false || echo true)
 LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.dirty=$(DIRTY)
 
-.PHONY: help build install install-tag install-cli install-skill update uninstall uninstall-cli uninstall-skill fmt fmt-check test race vet check
+.PHONY: help build tag install install-tag install-cli install-skill update uninstall uninstall-cli uninstall-skill fmt fmt-check test race vet check
 
 help:
 	@echo "build      собрать $(BINARY)"
+	@echo "tag        создать и отправить tag: make tag VERSION=vX.Y.Z"
 	@echo "install    установить CLI и skill из checkout или TAG=vX.Y.Z"
 	@echo "update     alias на install"
 	@echo "uninstall  удалить Zephyr CLI и пользовательский skill"
@@ -37,6 +40,28 @@ help:
 build:
 	@mkdir -p "$(dir $(BINARY))"
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o "$(BINARY)" ./cmd/zephyr
+
+tag:
+	@set -eu; \
+		version="$$ZEPHYR_RELEASE_VERSION"; \
+		if test '$(origin VERSION)' = file; then \
+			echo "VERSION is required: make tag VERSION=vX.Y.Z" >&2; \
+			exit 2; \
+		fi; \
+		if ! printf '%s\n' "$$version" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$$'; then \
+			echo "VERSION must be a semantic version such as v0.1.1 or v0.2.0-rc.1" >&2; \
+			exit 2; \
+		fi; \
+		if git rev-parse --verify --quiet "refs/tags/$$version" >/dev/null; then \
+			echo "tag $$version already exists" >&2; \
+			exit 1; \
+		fi; \
+		git tag "$$version"; \
+		if ! git push origin "$$version"; then \
+			echo "push не выполнен; локальный tag $$version сохранён" >&2; \
+			exit 1; \
+		fi; \
+		echo "Tag $$version создан на HEAD и отправлен в origin"
 
 ifeq ($(ZEPHYR_INSTALL_TAG),)
 install: install-cli install-skill
