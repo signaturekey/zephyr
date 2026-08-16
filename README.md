@@ -49,15 +49,29 @@ Zephyr разделяет детерминированную механику и
 Установить CLI вместе с пользовательским Codex skill:
 
 ```bash
+git clone https://github.com/signaturekey/zephyr.git
+cd zephyr
 make install
 ```
+
+Чтобы установить конкретный release tag, переключать checkout или клонировать
+репозиторий заново не нужно:
+
+```bash
+make install TAG=v0.1.0
+```
+
+В этом режиме Go скачивает указанный tag в module cache, а CLI и skill устанавливаются
+из одной версии. `TAG` должен быть semantic version вида `vX.Y.Z`; ветки, commit SHA и
+`latest` не принимаются.
 
 Skill устанавливается в `$HOME/.agents/skills/zephyr`. Только CLI можно установить
 через `go install ./cmd/zephyr`.
 
-Версия бинарника определяется из текущего checkout через
+При установке из checkout версия бинарника определяется через
 `git describe --tags --always`: на release tag это имя тега, между тегами — tag с
 числом коммитов и SHA, а до первого тега — SHA. Dirty-состояние выводится отдельно.
+При `TAG=vX.Y.Z` версией бинарника становится указанный tag.
 
 Или собрать бинарник локально:
 
@@ -90,8 +104,14 @@ make update
 ```
 
 `update` — alias на `install`: обе команды всегда устанавливают CLI и skill из одной
-версии исходников и сами не изменяют Git checkout. Чтобы сначала получить изменения
-из remote:
+версии исходников и сами не изменяют Git checkout. Можно также обновиться до
+конкретного release tag:
+
+```bash
+make update TAG=v0.1.0
+```
+
+Чтобы сначала получить изменения из remote для установки из checkout:
 
 ```bash
 git pull --rebase
