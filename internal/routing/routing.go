@@ -135,12 +135,6 @@ func Prepare(cfg config.Config, input Input) (Request, error) {
 		protected[role] = append(protected[role], "explicitly included by user")
 		sources[role] = "user"
 	}
-	if cfg.Roles[config.RoleSecurityAuditor].Enabled {
-		if _, explicitlyExcluded := exclude[config.RoleSecurityAuditor]; !explicitlyExcluded {
-			protected[config.RoleSecurityAuditor] = append(protected[config.RoleSecurityAuditor], "protected security boundary for untrusted changes")
-			sources[config.RoleSecurityAuditor] = "security-policy"
-		}
-	}
 
 	request := Request{
 		Version:         Version,
@@ -432,6 +426,7 @@ func roleScope(role string) string {
 		config.RoleMessagingExpert:      "delivery, ordering, acknowledgements, retries, DLQ and transactional messaging",
 		config.RoleInfrastructureExpert: "deployment configuration, probes, resources, rollout and CI/CD safety",
 		config.RoleStorageExpert:        "cache, search, object storage consistency, invalidation and lifecycle",
+		config.RoleSecurityAuditor:      "authentication, authorization, injection, secrets, PII and privilege boundaries",
 		config.RoleSQLExpert:            "SQL correctness, transactions, locking, indexes and migration safety",
 		config.RoleContractReviewer:     "public schemas, compatibility, optionality and producer-consumer contracts",
 		config.RoleQAExpert:             "specific changed behavior, negative paths, boundaries and ineffective tests",

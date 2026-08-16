@@ -9,14 +9,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPrepareProtectsRequiredPathAndSecurityRolesWithoutCoverageLimit(t *testing.T) {
+func TestPrepareTreatsSecurityAuditorLikeOtherOptionalRoles(t *testing.T) {
 	cfg, err := config.LoadBytes(nil)
 	require.NoError(t, err)
 	request, err := Prepare(cfg, Input{RunID: "run", ChangedPaths: []string{"cmd/main.go"}})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"code-reviewer", "golang-expert", "security-auditor"}, roles(request.Protected))
-	assert.Len(t, request.Protected, 3)
-	assert.Len(t, request.Candidates, len(config.KnownRoles())-3)
+	assert.Equal(t, []string{"code-reviewer", "golang-expert"}, roles(request.Protected))
+	assert.Contains(t, candidateRoles(request.Candidates), config.RoleSecurityAuditor)
+	assert.Len(t, request.Candidates, len(config.KnownRoles())-2)
+	for _, candidate := range request.Candidates {
+		assert.NotEmpty(t, candidate.Scope, candidate.Role)
+	}
+}
+
+func TestPrepareProtectsSecurityAuditorForStrongSecuritySignal(t *testing.T) {
+	cfg, err := config.LoadBytes(nil)
+	require.NoError(t, err)
+	request, err := Prepare(cfg, Input{
+		RunID: "run", ChangedPaths: []string{"README.md"},
+		Signals: []string{"security"}, StrongSignals: []string{"security"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"code-reviewer", "security-auditor"}, roles(request.Protected))
+	assert.NotContains(t, candidateRoles(request.Candidates), config.RoleSecurityAuditor)
 }
 
 func TestResolveAndFallbackAccountForEveryOptionalRole(t *testing.T) {
@@ -58,6 +73,14 @@ func roles(decisions []Decision) []string {
 	result := make([]string, 0, len(decisions))
 	for _, decision := range decisions {
 		result = append(result, decision.Role)
+	}
+	return result
+}
+
+func candidateRoles(candidates []Candidate) []string {
+	result := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		result = append(result, candidate.Role)
 	}
 	return result
 }

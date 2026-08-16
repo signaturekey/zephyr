@@ -78,7 +78,6 @@ Keep these invariants:
 - `code-reviewer` is mandatory for implementation review;
 - roles proven by changed paths or strong diff signals are protected;
 - explicit includes are protected;
-- `security-auditor` is protected unless explicitly excluded;
 - the semantic router decides every remaining enabled optional role exactly once;
 - invalid or failed semantic routing includes every unresolved role conservatively;
 - `max_parallel_reviewers` limits concurrency, never total coverage.

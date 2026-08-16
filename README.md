@@ -174,7 +174,7 @@ Zephyr разрешает base и head, вычисляет merge base, дела�
 
 ```bash
 zephyr review --include-role qa-expert
-zephyr review --exclude-role security-auditor
+zephyr review --exclude-role code-simplifier
 zephyr review --max-parallel 4
 zephyr review --config /path/to/config.yaml
 ```
@@ -210,9 +210,8 @@ zephyr review --config /path/to/config.yaml
 1. `code-reviewer` обязателен для каждого текущего code review.
 2. Пути и сильные сигналы в diff защищают профильных экспертов.
 3. Роли из `--include-role` становятся защищёнными.
-4. `security-auditor` защищён по умолчанию, но пользователь может явно исключить его.
-5. Semantic router обязан принять решение по каждой оставшейся включённой роли.
-6. При ошибке, неполном ответе или нарушении схемы все нерешённые роли включаются
+4. Semantic router обязан принять решение по каждой оставшейся включённой роли.
+5. При ошибке, неполном ответе или нарушении схемы все нерешённые роли включаются
    консервативным fallback.
 
 Каждая роль запускается не более одного раза. Она получает сфокусированный primary
