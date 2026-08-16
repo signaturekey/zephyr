@@ -1,8 +1,6 @@
 GO ?= go
 GOFMT ?= gofmt
 BINARY ?= bin/zephyr
-MODULE ?= github.com/signaturekey/zephyr
-UPDATE_VERSION ?= latest
 GO_BIN := $(shell $(GO) env GOBIN)
 ifeq ($(strip $(GO_BIN)),)
 GO_BIN := $(shell $(GO) env GOPATH)/bin
@@ -13,7 +11,7 @@ HARNESS_SKILL_SOURCE := .agents/skills/zephyr
 HARNESS_SKILL_TARGET := $(HARNESS_SKILLS_DIR)/zephyr
 CODEX_RESTART_MESSAGE := Перезапустите Codex, чтобы применить изменения Zephyr.
 GO_FILES := $(shell find cmd internal roles configs -type f -name '*.go' | sort)
-VERSION ?= dev
+VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 DIRTY ?= $(shell test -z "$$(git status --porcelain 2>/dev/null)" && echo false || echo true)
 LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.dirty=$(DIRTY)
@@ -21,16 +19,16 @@ LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.dirty=$(D
 .PHONY: help build install install-cli install-skill update uninstall uninstall-cli uninstall-skill fmt fmt-check test race vet check
 
 help:
-	@echo "build      build $(BINARY)"
-	@echo "install    install Zephyr CLI and user harness skill"
-	@echo "update     install the latest tagged Zephyr release"
-	@echo "uninstall  remove Zephyr CLI and user harness skill"
-	@echo "fmt        format Go files"
-	@echo "fmt-check  fail when Go files need formatting"
-	@echo "test       run unit and integration tests"
-	@echo "race       run tests with the race detector"
-	@echo "vet        run go vet"
-	@echo "check      run fmt-check, test, race, and vet"
+	@echo "build      собрать $(BINARY)"
+	@echo "install    установить Zephyr CLI и пользовательский skill"
+	@echo "update     переустановить CLI и skill из текущего checkout"
+	@echo "uninstall  удалить Zephyr CLI и пользовательский skill"
+	@echo "fmt        отформатировать Go-файлы"
+	@echo "fmt-check  проверить форматирование Go-файлов"
+	@echo "test       запустить unit- и integration-тесты"
+	@echo "race       запустить тесты с race detector"
+	@echo "vet        запустить go vet"
+	@echo "check      выполнить fmt-check, test, race и vet"
 
 build:
 	@mkdir -p "$(dir $(BINARY))"
@@ -48,9 +46,7 @@ install-skill:
 	mkdir -p "$(HARNESS_SKILL_TARGET)"
 	cp -R "$(HARNESS_SKILL_SOURCE)/." "$(HARNESS_SKILL_TARGET)/"
 
-update:
-	$(GO) install $(MODULE)/cmd/zephyr@$(UPDATE_VERSION)
-	@echo "$(CODEX_RESTART_MESSAGE)"
+update: install
 
 uninstall: uninstall-cli uninstall-skill
 	@echo "$(CODEX_RESTART_MESSAGE)"

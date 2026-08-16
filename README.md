@@ -103,6 +103,10 @@ make install
 Skill устанавливается в `$HOME/.agents/skills/zephyr`. Только CLI можно установить
 через `go install ./cmd/zephyr`.
 
+Версия бинарника определяется из текущего checkout через
+`git describe --tags --always`: на release tag это имя тега, между тегами — tag с
+числом коммитов и SHA, а до первого тега — SHA. Dirty-состояние выводится отдельно.
+
 Или собрать бинарник локально:
 
 ```bash
@@ -142,16 +146,19 @@ zephyr review --output review.md --json-output review.json
 <a id="maintenance"></a>
 ## Обновление и удаление
 
-Обновить установленный CLI до последнего tagged release:
+Переустановить CLI и skill из текущего checkout:
 
 ```bash
 make update
 ```
 
-При необходимости можно установить конкретную версию:
+`update` — alias на `install`: обе команды всегда устанавливают CLI и skill из одной
+версии исходников и сами не изменяют Git checkout. Чтобы сначала получить изменения
+из remote:
 
 ```bash
-make update UPDATE_VERSION=v0.1.0
+git pull --rebase
+make update
 ```
 
 Удалить CLI и установленный пользовательский skill:
@@ -160,12 +167,11 @@ make update UPDATE_VERSION=v0.1.0
 make uninstall
 ```
 
-`update` устанавливает только CLI из
-`github.com/signaturekey/zephyr/cmd/zephyr@latest`. `uninstall` удаляет `zephyr` из
-`GOBIN` (или `GOPATH/bin`) и skill из `$HOME/.agents/skills/zephyr`. Исходники,
-конфиги и локальный `bin/zephyr`, созданный через `make build`, эти команды не
-меняют. После `make install`, `make update` или `make uninstall` перезапустите
-Codex, чтобы применить изменения; каждая из этих команд также напомнит об этом.
+`uninstall` удаляет `zephyr` из `GOBIN` (или `GOPATH/bin`) и skill из
+`$HOME/.agents/skills/zephyr`. Исходники, конфиги и локальный `bin/zephyr`, созданный
+через `make build`, команда не меняет. После `make install`, `make update` или
+`make uninstall` перезапустите Codex, чтобы применить изменения; каждая из этих
+команд также напомнит об этом.
 
 <a id="review-flow"></a>
 ## Как проходит ревью
@@ -429,7 +435,7 @@ Non-ignored untracked файлы входят в worktree-снапшот авт�
 
 | Симптом | Что проверить |
 | --- | --- |
-| `zephyr: command not found` | Выполнить `go install ./cmd/zephyr` и проверить, что `$(go env GOPATH)/bin` находится в `PATH` |
+| `zephyr: command not found` | Выполнить `make install` и проверить, что `$(go env GOPATH)/bin` находится в `PATH` |
 | Ошибка подключения или авторизации Codex | Проверить локальный Codex, App Server и действующую пользовательскую сессию |
 | Нет изменений для ревью | Проверить выбранный source: worktree, commit либо пара `--branch` + `--base` |
 | Branch/ref не разрешается | Проверить имя ref и доступность remote; для URL также проверить сетевой доступ и credentials Git |
