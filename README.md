@@ -58,11 +58,11 @@ make install
 репозиторий заново не нужно:
 
 ```bash
-make install TAG=v0.1.0
+make install VER=v0.1.0
 ```
 
 В этом режиме Go скачивает указанный tag в module cache, а CLI и skill устанавливаются
-из одной версии. `TAG` должен быть semantic version вида `vX.Y.Z`; ветки, commit SHA и
+из одной версии. `VER` должен быть semantic version вида `vX.Y.Z`; ветки, commit SHA и
 `latest` не принимаются.
 
 Skill устанавливается в `$HOME/.agents/skills/zephyr`. Только CLI можно установить
@@ -71,7 +71,7 @@ Skill устанавливается в `$HOME/.agents/skills/zephyr`. Толь�
 При установке из checkout версия бинарника определяется через
 `git describe --tags --always`: на release tag это имя тега, между тегами — tag с
 числом коммитов и SHA, а до первого тега — SHA. Dirty-состояние выводится отдельно.
-При `TAG=vX.Y.Z` версией бинарника становится указанный tag.
+При `VER=vX.Y.Z` версией бинарника становится указанный tag.
 
 Или собрать бинарник локально:
 
@@ -108,7 +108,7 @@ make update
 конкретного release tag:
 
 ```bash
-make update TAG=v0.1.0
+make update VER=v0.1.0
 ```
 
 Чтобы сначала получить изменения из remote для установки из checkout:

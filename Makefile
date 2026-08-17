@@ -2,9 +2,9 @@ GO ?= go
 GOFMT ?= gofmt
 BINARY ?= bin/zephyr
 MODULE_PATH := github.com/signaturekey/zephyr
-TAG ?=
-ZEPHYR_INSTALL_TAG := $(strip $(TAG))
-export ZEPHYR_INSTALL_TAG
+VER ?=
+ZEPHYR_INSTALL_VERSION := $(strip $(VER))
+export ZEPHYR_INSTALL_VERSION
 GO_BIN := $(shell $(GO) env GOBIN)
 ifeq ($(strip $(GO_BIN)),)
 GO_BIN := $(shell $(GO) env GOPATH)/bin
@@ -16,7 +16,7 @@ HARNESS_SKILL_TARGET := $(HARNESS_SKILLS_DIR)/zephyr
 CODEX_RESTART_MESSAGE := Перезапустите Codex, чтобы применить изменения Zephyr.
 GO_FILES := $(shell find cmd internal roles configs -type f -name '*.go' | sort)
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
-ZEPHYR_RELEASE_VERSION := $(strip $(VERSION))
+ZEPHYR_RELEASE_VERSION := $(strip $(VER))
 export ZEPHYR_RELEASE_VERSION
 COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 DIRTY ?= $(shell test -z "$$(git status --porcelain 2>/dev/null)" && echo false || echo true)
@@ -26,8 +26,8 @@ LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.dirty=$(D
 
 help:
 	@echo "build      собрать $(BINARY)"
-	@echo "tag        создать и отправить tag: make tag VERSION=vX.Y.Z"
-	@echo "install    установить CLI и skill из checkout или TAG=vX.Y.Z"
+	@echo "tag        создать и отправить tag: make tag VER=vX.Y.Z"
+	@echo "install    установить CLI и skill из checkout или VER=vX.Y.Z"
 	@echo "update     alias на install"
 	@echo "uninstall  удалить Zephyr CLI и пользовательский skill"
 	@echo "fmt        отформатировать Go-файлы"
@@ -44,12 +44,12 @@ build:
 tag:
 	@set -eu; \
 		version="$$ZEPHYR_RELEASE_VERSION"; \
-		if test '$(origin VERSION)' = file; then \
-			echo "VERSION is required: make tag VERSION=vX.Y.Z" >&2; \
+		if test '$(origin VER)' = file; then \
+			echo "VER is required: make tag VER=vX.Y.Z" >&2; \
 			exit 2; \
 		fi; \
 		if ! printf '%s\n' "$$version" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$$'; then \
-			echo "VERSION must be a semantic version such as v0.1.1 or v0.2.0-rc.1" >&2; \
+			echo "VER must be a semantic version such as v0.1.1 or v0.2.0-rc.1" >&2; \
 			exit 2; \
 		fi; \
 		if git rev-parse --verify --quiet "refs/tags/$$version" >/dev/null; then \
@@ -63,7 +63,7 @@ tag:
 		fi; \
 		echo "Tag $$version создан на HEAD и отправлен в origin"
 
-ifeq ($(ZEPHYR_INSTALL_TAG),)
+ifeq ($(ZEPHYR_INSTALL_VERSION),)
 install: install-cli install-skill
 else
 install: install-tag
@@ -74,9 +74,9 @@ install:
 
 install-tag:
 	@set -eu; \
-		tag="$$ZEPHYR_INSTALL_TAG"; \
+		tag="$$ZEPHYR_INSTALL_VERSION"; \
 		if ! printf '%s\n' "$$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?(\+incompatible)?$$'; then \
-			echo "TAG must be a semantic version such as v0.1.0 or v0.2.0-rc.1" >&2; \
+			echo "VER must be a semantic version such as v0.1.0 or v0.2.0-rc.1" >&2; \
 			exit 2; \
 		fi; \
 		module='$(MODULE_PATH)'; \
