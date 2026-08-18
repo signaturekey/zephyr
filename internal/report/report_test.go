@@ -23,7 +23,10 @@ func TestAggregateAndRenderKeepsEverySeverity(t *testing.T) {
 	}
 	review, err := Aggregate(AggregateInput{
 		RunID: "run", GeneratedAt: time.Unix(1, 0), Scope: Scope{Source: snapshot.SourceWorktree, HeadSHA: "head", BaseSHA: "base"},
-		Routing: routing.Result{}, MaxParallel: 4,
+		Routing: routing.Result{}, MaxParallel: 4, Roles: []RoleExecution{
+			{Role: "code-reviewer", Status: "complete"},
+			{Role: "qa-expert", Status: "failed", Error: "timeout"},
+		},
 		Candidates: evidence.CandidateSet{Version: 1, RunID: "run", Findings: findings}, Verdicts: verdicts,
 		EvidenceStatus: "validated",
 	})
@@ -33,6 +36,8 @@ func TestAggregateAndRenderKeepsEverySeverity(t *testing.T) {
 	assert.Contains(t, string(markdown), "[P1]")
 	assert.Contains(t, string(markdown), "[P2]")
 	assert.Contains(t, string(markdown), "[P3]")
+	assert.Contains(t, string(markdown), "`code-reviewer` — complete")
+	assert.Contains(t, string(markdown), "`qa-expert` — failed: timeout")
 }
 
 func finding(id string, severity protocol.Severity) protocol.CandidateFinding {

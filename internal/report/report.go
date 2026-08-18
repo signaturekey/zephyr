@@ -194,6 +194,14 @@ func RenderMarkdown(review Review) ([]byte, error) {
 	for _, decision := range review.Routing.Selected {
 		fmt.Fprintf(&output, "- `%s` — %s\n", code(decision.Role), clean(strings.Join(decision.Reasons, "; ")))
 	}
+	fmt.Fprintln(&output, "\nРезультаты ролей:")
+	for _, execution := range review.Roles {
+		fmt.Fprintf(&output, "- `%s` — %s", code(execution.Role), clean(execution.Status))
+		if execution.Error != "" {
+			fmt.Fprintf(&output, ": %s", clean(execution.Error))
+		}
+		fmt.Fprintln(&output)
+	}
 	fmt.Fprintf(&output, "\nПараллельность: %d. Evidence gate: %s.\n", review.MaxParallel, clean(review.EvidenceStatus))
 
 	fmt.Fprintln(&output)
