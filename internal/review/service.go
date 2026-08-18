@@ -24,17 +24,18 @@ import (
 var ErrInvalidRequest = errors.New("invalid review request")
 
 type Request struct {
-	Repository  string
-	Source      snapshot.Source
-	Commit      string
-	Branch      string
-	Base        string
-	ConfigPath  string
-	Contexts    []string
-	IncludeRole []string
-	ExcludeRole []string
-	MaxParallel int
-	KeepTemp    bool
+	Repository     string
+	Source         snapshot.Source
+	Commit         string
+	Branch         string
+	Base           string
+	ConfigPath     string
+	Contexts       []string
+	CoverageLimits []string
+	IncludeRole    []string
+	ExcludeRole    []string
+	MaxParallel    int
+	KeepTemp       bool
 }
 
 type Result struct {
@@ -112,7 +113,7 @@ func (service Service) Run(ctx context.Context, request Request) (Result, error)
 	defer runtime.Close()
 
 	var routingResult routing.Result
-	var coverage []string
+	coverage := append([]string(nil), request.CoverageLimits...)
 	if len(routingRequest.Candidates) == 0 {
 		routingResult = routing.Deterministic(routingRequest)
 	} else {

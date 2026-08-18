@@ -71,11 +71,17 @@ func TestServiceRunsOneSnapshotParallelRolesGateAndReport(t *testing.T) {
 
 	runtime := &fakeRuntime{}
 	service := Service{RuntimeFactory: func(context.Context, config.Config) (agent.Runtime, error) { return runtime, nil }}
-	result, err := service.Run(context.Background(), Request{Repository: repo, Source: snapshot.SourceWorktree, MaxParallel: 3})
+	result, err := service.Run(context.Background(), Request{
+		Repository: repo, Source: snapshot.SourceWorktree, MaxParallel: 3,
+		CoverageLimits: []string{"Jira MCP failed: connection timed out"},
+	})
 	require.NoError(t, err)
 	assert.Len(t, result.Review.Findings, 1)
 	assert.Equal(t, "validated", result.Review.EvidenceStatus)
+	assert.Equal(t, "complete-with-limits", result.Review.Status)
+	assert.Equal(t, []string{"Jira MCP failed: connection timed out"}, result.Review.CoverageLimits)
 	assert.Contains(t, string(result.Markdown), "invalid value")
+	assert.Contains(t, string(result.Markdown), "Jira MCP failed: connection timed out")
 	assert.Contains(t, string(result.JSON), `"evidence_status": "validated"`)
 	runtime.mu.Lock()
 	assert.Equal(t, 1, runtime.gateRuns)

@@ -1,9 +1,9 @@
 # MCP context collection
 
-Apply this workflow before every Zephyr review. Build a bounded external-context graph
-from objects explicitly identified in the request and roots inferred from the selected
-branch or Bitbucket pull request. Collect direct references one level from those roots;
-never crawl recursively.
+Apply this workflow before every Zephyr review. Start from objects explicitly identified
+in the request and roots inferred from the selected branch or Bitbucket pull request.
+Collect the context needed to understand the implementation requirements and stop when
+that purpose is satisfied.
 
 ## Discover roots
 
@@ -25,21 +25,23 @@ Do not perform broad keyword searches to invent a root. A branch with no Jira ke
 no uniquely matched pull request has no inferred external root; disclose that no Jira
 or Bitbucket context could be identified and continue the review.
 
-## Expand direct references
+## Collect requirement context
 
-From each root, collect at most one level of directly declared references:
+From each root, follow only references that can change the expected implementation:
 
-- Jira: linked Jira issues and direct Confluence or Bitbucket URLs in the fields
-  retrieved under "Scope by source";
-- Bitbucket: Jira keys and direct Confluence URLs in pull-request title or description;
-- Confluence and documents: do not follow their outbound links by default.
+- Jira: acceptance criteria, contract-relevant linked issues, and relevant Confluence
+  or Bitbucket references;
+- Bitbucket: Jira issues and Confluence pages referenced by the pull-request title or
+  description, plus relevant comments when the user requested comment review;
+- Confluence and documents: linked requirements only when the current page depends on
+  them to define the reviewed behavior.
 
-Expansion stops after these direct objects. References found inside an expanded object
-are recorded as uncollected references, not traversed. Deduplicate objects before
-fetching and cap the complete run at 20 external objects. If the cap is reached,
-prioritize explicit roots, then the branch/PR root, then its direct references, and
-report every omitted object as a coverage limitation. Do not read comments, history,
-attachments, or page children unless the user explicitly requests them.
+There is no fixed link-depth or object-count limit. Deduplicate objects and stop when
+the root requirements, acceptance criteria, and contract-relevant dependencies needed
+to judge the change are captured. Do not crawl tangential links, backlinks, whole page
+trees, or every issue in an epic merely because they are reachable. Do not read
+comments, history, attachments, or page children unless they are needed to resolve a
+requirement or the user explicitly requests them.
 
 ## Read-only boundary
 
@@ -58,7 +60,7 @@ Retrieve only fields relevant to implementation review:
 
 - Jira: key, canonical URL, summary, issue type, status, description, acceptance
   criteria, labels/components, and directly declared issue relationships. Preserve
-  direct Confluence and Bitbucket URLs needed for the bounded expansion. Include
+  Confluence and Bitbucket URLs needed to understand the requirements. Include
   comments or history only when explicitly requested.
 - Confluence: page ID, canonical URL, title, version or updated timestamp, and the
   relevant page body. Do not recursively fetch the page tree by default.
@@ -115,7 +117,14 @@ the same cleanup when collection or review fails. Never remove a path inferred f
 the external object or reviewed repository.
 
 In the final response, name the roots, inferred branch/PR mapping, and sources
-successfully frozen. Disclose unavailable, ambiguous, omitted-by-limit, failed, stale,
-or truncated sources as coverage limitations. Explicitly say when no Jira or Bitbucket
+successfully frozen. Disclose unavailable, ambiguous, failed, stale, or truncated
+sources as coverage limitations. Explicitly say when no Jira or Bitbucket
 root could be identified. Do not claim that MCP was used when the user supplied an
 already local `--context` file.
+
+Pass every material collection limitation into the canonical report with a separate
+`--coverage-limit` flag. Keep the reason short and safe, for example `Jira MCP failed:
+connection timed out` or `Bitbucket context unavailable: no read-only MCP operation`.
+Do not include raw provider payloads, credentials, cookies, authorization details, or
+full stack traces. Do not add a limitation merely because a source is irrelevant to
+the selected review and no root referenced it.

@@ -112,11 +112,12 @@ operational failure and must not present candidates as confirmed findings.
 The CLI accepts repeatable `--context FILE` inputs. Before every review, the thin
 harness skill collects explicit Jira, Confluence, Bitbucket, or document objects and
 infers Jira/Bitbucket roots from the selected branch or pull request when possible. It
-may follow only one level of direct Jira, Confluence, and Bitbucket references, with
-deduplication and a 20-object cap, through unambiguously read-only MCP operations. It
-freezes collected objects to temporary Markdown and reports unavailable, ambiguous,
-or omitted context as coverage limitations. The Go core does not own provider or MCP
-clients and performs no external writes.
+may follow contract-relevant Jira, Confluence, and Bitbucket references through
+unambiguously read-only MCP operations until it has enough context to understand the
+implementation requirements. It deduplicates objects, avoids tangential graph crawls,
+freezes collected objects to temporary Markdown, and reports unavailable or ambiguous
+context as coverage limitations. The Go core does not own provider or MCP clients and
+performs no external writes.
 
 Native MCP collection through Aether is deferred until Zephyr can enforce a real
 read-only tool allowlist; approval policy `never` alone is not such a policy.

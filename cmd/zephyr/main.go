@@ -36,6 +36,7 @@ type ReviewCmd struct {
 	Base        string   `help:"Base ref для --branch."`
 	Config      string   `help:"Project config override; default .zephyr/config.yaml из snapshot, затем встроенные defaults." type:"path"`
 	Context     []string `help:"Frozen Markdown/JSON context; flag можно повторять." type:"path"`
+	Coverage    []string `name:"coverage-limit" help:"Известное ограничение покрытия; flag можно повторять."`
 	IncludeRole []string `name:"include-role" help:"Явно включить reviewer role; flag можно повторять."`
 	ExcludeRole []string `name:"exclude-role" help:"Явно исключить optional reviewer role; flag можно повторять."`
 	MaxParallel int      `name:"max-parallel" help:"Максимальное число одновременных reviewers; default из config."`
@@ -96,7 +97,7 @@ func (command *ReviewCmd) Run(app *runtime) error {
 	}
 	result, err := app.service.Run(app.ctx, review.Request{
 		Repository: command.Repo, Source: source, Commit: command.Commit, Branch: command.Branch, Base: command.Base,
-		ConfigPath: command.Config, Contexts: command.Context, IncludeRole: command.IncludeRole,
+		ConfigPath: command.Config, Contexts: command.Context, CoverageLimits: command.Coverage, IncludeRole: command.IncludeRole,
 		ExcludeRole: command.ExcludeRole, MaxParallel: command.MaxParallel, KeepTemp: command.KeepTemp,
 	})
 	if err != nil {
