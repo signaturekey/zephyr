@@ -1,6 +1,6 @@
 ---
 name: zephyr
-description: Run one local, read-only, evidence-gated Zephyr review of worktree, commit, or branch changes and collect explicitly referenced Jira, Confluence, Bitbucket, or document context through read-only MCP when available. Use only when the user explicitly invokes Zephyr, names the zephyr skill, or asks to "run/start Zephyr". Do not trigger for a generic code review, audit, test question, or request that does not explicitly name Zephyr.
+description: Run one local, read-only, evidence-gated Zephyr review of worktree, commit, or branch changes and collect bounded Jira, Confluence, Bitbucket, or document context through read-only MCP when available. Use only when the user explicitly invokes Zephyr, names the zephyr skill, or asks to "run/start Zephyr". Do not trigger for a generic code review, audit, test question, or request that does not explicitly name Zephyr.
 ---
 
 # Zephyr review
@@ -33,10 +33,11 @@ Do not require a clean checkout and do not split staged and unstaged changes.
 
 ## Collect external context
 
-When the request contains an explicit Jira issue, Confluence page, Bitbucket pull
-request, or document reference, read
+Before every review, read
 [references/context-collection.md](references/context-collection.md) completely and
-follow it before invoking Zephyr.
+follow it before invoking Zephyr. Collect explicit external references and infer the
+review root from the selected branch or Bitbucket pull request when possible. Follow
+only the bounded direct references allowed by that workflow.
 
 Use only MCP operations that are unambiguously read-only. Freeze each retrieved object
 into a private temporary Markdown file outside the reviewed checkout and pass every
