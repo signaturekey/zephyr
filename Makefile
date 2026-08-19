@@ -26,7 +26,7 @@ LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.dirty=$(D
 
 help:
 	@echo "build      собрать $(BINARY)"
-	@echo "tag        создать и отправить tag: make tag VER=vX.Y.Z"
+	@echo "tag        показать последний tag; создать: make tag VER=vX.Y.Z"
 	@echo "install    установить CLI и skill из checkout или VER=vX.Y.Z"
 	@echo "update     alias на install"
 	@echo "uninstall  удалить Zephyr CLI и пользовательский skill"
@@ -45,8 +45,18 @@ tag:
 	@set -eu; \
 		version="$$ZEPHYR_RELEASE_VERSION"; \
 		if test '$(origin VER)' = file; then \
-			echo "VER is required: make tag VER=vX.Y.Z" >&2; \
-			exit 2; \
+			tags="$$(git tag --list --sort=-version:refname | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$$' || true)"; \
+			latest="$$(printf '%s\n' "$$tags" | head -n 1)"; \
+			case "$$latest" in \
+				*-*) stable="$${latest%%-*}"; \
+					if printf '%s\n' "$$tags" | grep -Fxq "$$stable"; then latest="$$stable"; fi ;; \
+			esac; \
+			if test -z "$$latest"; then \
+				echo "no semantic version tags found" >&2; \
+				exit 1; \
+			fi; \
+			printf '%s\n' "$$latest"; \
+			exit 0; \
 		fi; \
 		if ! printf '%s\n' "$$version" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$$'; then \
 			echo "VER must be a semantic version such as v0.1.1 or v0.2.0-rc.1" >&2; \

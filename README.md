@@ -118,6 +118,18 @@ git pull --rebase
 make update
 ```
 
+Показать последний локальный release tag:
+
+```bash
+make tag
+```
+
+Создать и отправить новый release tag:
+
+```bash
+make tag VER=v0.1.3
+```
+
 Удалить CLI и установленный пользовательский skill:
 
 ```bash
