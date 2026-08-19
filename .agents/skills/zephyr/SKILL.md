@@ -28,6 +28,12 @@ If the host requires command approval, request one narrowly scoped reusable appr
 for the stable `zephyr review` command. Do not request a broad Codex approval or persist
 rules for temporary executable paths.
 
+When the command tool supports an explicit outside-sandbox execution request, use it
+for the first `zephyr review` attempt. Do not probe by running the same command inside
+the sandbox first: Zephyr starts Aether and a nested Codex App Server, whose
+initialization may be blocked by the parent sandbox. Outside-sandbox execution still
+uses the current user's permissions and does not expand the review authorization above.
+
 ## Choose the source
 
 - Current staged, unstaged, and untracked changes: `zephyr review --worktree --repo <repo>`.
