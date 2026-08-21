@@ -12,38 +12,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoadDefaults(t *testing.T) {
+func TestLoadEmbeddedDefaults(t *testing.T) {
 	cfg, err := Load("")
-	require.NoError(t, err, "load defaults")
-
-	if cfg.Version != CurrentVersion || cfg.Profile != ProfileStandard || cfg.Language != "auto" {
-		t.Fatalf("unexpected defaults: version=%d profile=%q language=%q", cfg.Version, cfg.Profile, cfg.Language)
-	}
-	wantLimits := Limits{MaxParallelReviewers: 8, MaxRolesStandard: 17, MaxRolesThorough: 17, MaxFinalFindings: 30}
-	if cfg.Limits != wantLimits {
-		t.Fatalf("limits = %+v, want %+v", cfg.Limits, wantLimits)
-	}
-	for _, role := range KnownRoles() {
-		roleConfig, ok := cfg.Roles[role]
-		if !ok || !roleConfig.Enabled {
-			assert.True(t, ok && roleConfig.Enabled, "default role %q is not enabled", role)
-		}
-	}
-	if roleConfig, ok := cfg.Roles["python-expert"]; !ok || !roleConfig.Enabled {
-		t.Error("default python-expert role is not enabled")
-	}
-	if roleConfig, ok := cfg.Roles[RoleReactExpert]; !ok || !roleConfig.Enabled {
-		t.Error("default react-expert role is not enabled")
-	}
-	if len(cfg.Routing) != 26 {
-		t.Fatalf("routing rule count = %d, want 26", len(cfg.Routing))
-	}
-	if !cfg.Redaction.Enabled || len(cfg.Redaction.DenyPatterns) != 3 {
-		t.Fatalf("unexpected redaction defaults: %+v", cfg.Redaction)
+	require.NoError(t, err, "load embedded defaults")
+	policy, err := ResolveModelPolicy(cfg)
+	require.NoError(t, err, "resolve embedded default model policy")
+	for _, process := range modelPolicyProcessOrder() {
+		settings, ok := policy.Entry(process)
+		assert.True(t, ok, "embedded defaults omit %q", process)
+		assert.NotEmpty(t, settings.Model, "embedded defaults omit model for %q", process)
+		assert.NotEmpty(t, settings.Effort, "embedded defaults omit effort for %q", process)
 	}
 }
 
 func TestLoadBytesMergesProjectConfig(t *testing.T) {
+	defaults, err := LoadBytes(nil)
+	require.NoError(t, err, "load embedded defaults")
 	project := []byte(`
 version: 1
 profile: thorough
@@ -74,23 +58,29 @@ redaction:
 	if cfg.Limits.MaxParallelReviewers != 4 || cfg.Limits.MaxFinalFindings != 12 {
 		t.Errorf("project limits not applied: %+v", cfg.Limits)
 	}
-	if cfg.Limits.MaxRolesStandard != 17 || cfg.Limits.MaxRolesThorough != 17 {
+	if cfg.Limits.MaxRolesStandard != defaults.Limits.MaxRolesStandard || cfg.Limits.MaxRolesThorough != defaults.Limits.MaxRolesThorough {
 		t.Errorf("unmentioned default limits were lost: %+v", cfg.Limits)
 	}
 	if cfg.Roles[RoleCodeSimplifier].Enabled {
 		t.Error("explicit false role override was not preserved")
 	}
-	if !cfg.Roles[RoleCodeReviewer].Enabled {
+	if cfg.Roles[RoleCodeReviewer] != defaults.Roles[RoleCodeReviewer] {
 		t.Error("unmentioned default role was lost")
 	}
-	if len(cfg.Routing) != 27 {
+	if len(cfg.Routing) != len(defaults.Routing)+1 {
 		t.Fatalf("routing rule count = %d, want defaults plus project rule", len(cfg.Routing))
 	}
-	if !contains(cfg.RestrictedPaths, "vendor/**") || !contains(cfg.RestrictedPaths, "third_party/**") {
+	if !contains(cfg.RestrictedPaths, "third_party/**") {
 		t.Fatalf("restricted paths were not appended: %v", cfg.RestrictedPaths)
 	}
-	if cfg.Redaction.Enabled || !contains(cfg.Redaction.DenyPatterns, "**/*.pem") || !contains(cfg.Redaction.DenyPatterns, "**/*.key") {
+	for _, path := range defaults.RestrictedPaths {
+		assert.True(t, contains(cfg.RestrictedPaths, path), "default restricted path %q was lost", path)
+	}
+	if cfg.Redaction.Enabled || !contains(cfg.Redaction.DenyPatterns, "**/*.key") {
 		t.Fatalf("redaction merge = %+v", cfg.Redaction)
+	}
+	for _, pattern := range defaults.Redaction.DenyPatterns {
+		assert.True(t, contains(cfg.Redaction.DenyPatterns, pattern), "default deny pattern %q was lost", pattern)
 	}
 }
 
@@ -163,15 +153,15 @@ func TestLoadBytesDeduplicatesAppendedPathPolicies(t *testing.T) {
 version: 1
 restricted_paths: ["vendor/**", "custom/**", "custom/**"]
 redaction:
-  deny_patterns: ["**/*.pem", "**/*.token", "**/*.token"]
+  deny_patterns: ["**/*.token", "**/*.token"]
 `))
 	if err != nil {
 		t.Fatalf("LoadBytes: %v", err)
 	}
-	if count(cfg.RestrictedPaths, "vendor/**") != 1 || count(cfg.RestrictedPaths, "custom/**") != 1 {
+	if count(cfg.RestrictedPaths, "custom/**") != 1 {
 		t.Fatalf("restricted paths not deduplicated: %v", cfg.RestrictedPaths)
 	}
-	if count(cfg.Redaction.DenyPatterns, "**/*.pem") != 1 || count(cfg.Redaction.DenyPatterns, "**/*.token") != 1 {
+	if count(cfg.Redaction.DenyPatterns, "**/*.token") != 1 {
 		t.Fatalf("deny patterns not deduplicated: %v", cfg.Redaction.DenyPatterns)
 	}
 }

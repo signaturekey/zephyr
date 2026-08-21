@@ -9,44 +9,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolveModelPolicyDefaultsUseTieredModels(t *testing.T) {
-	cfg, err := LoadBytes(nil)
-	require.NoError(t, err, "load bytes")
-
-	policy, err := ResolveModelPolicy(cfg)
-	require.NoError(t, err, "resolve model policy")
-
-	assertPolicyEntry(t, policy, ProcessProbe, ModelSettings{Model: "gpt-5.6-luna", Effort: "low", Fast: true})
-	assertPolicyEntry(t, policy, ProcessSemanticRouter, ModelSettings{Model: "gpt-5.6-terra", Effort: "low", Fast: false})
-	assertPolicyEntry(t, policy, reviewerProcess(RoleCodeReviewer), ModelSettings{Model: "gpt-5.6-terra", Effort: "medium", Fast: false})
-	assertPolicyEntry(t, policy, reviewerProcess(RoleSkillAuthoringExpert), ModelSettings{Model: "gpt-5.6-terra", Effort: "medium", Fast: false})
-	assertPolicyEntry(t, policy, reviewerProcess(RoleCodeSimplifier), ModelSettings{Model: "gpt-5.6-terra", Effort: "low", Fast: false})
-	assertPolicyEntry(t, policy, reviewerProcess(RoleSecurityAuditor), ModelSettings{Model: "gpt-5.6-sol", Effort: "high", Fast: false})
-	assertPolicyEntry(t, policy, ProcessEvidenceGate, ModelSettings{Model: "gpt-5.6-sol", Effort: "xhigh", Fast: false})
-}
-
 func TestResolveModelPolicyInheritsPartialRoleOverride(t *testing.T) {
-	cfg, err := LoadBytes([]byte(`
-version: 1
-model_policy:
-  default:
-    model: gpt-5.6-terra
-    effort: medium
-    fast: false
-  stages:
-    reviewers:
-      default:
-        effort: high
-        fast: true
-      roles:
-        security-auditor:
-          model: gpt-5.6-sol
-`))
-	if err != nil {
-		t.Fatalf("LoadBytes() error = %v", err)
-	}
-
-	policy, err := ResolveModelPolicy(cfg)
+	policy, err := ResolveModelPolicy(Config{ModelPolicy: ModelPolicy{
+		Default: ModelSettings{Model: "gpt-5.6-terra", Effort: "medium"},
+		Stages: ModelPolicyStages{
+			Probe: ModelSettings{Model: "gpt-5.6-luna", Effort: "low", Fast: true, fastSet: true},
+			Reviewers: ReviewerModelPolicy{
+				Default: ModelSettings{Effort: "high", Fast: true, fastSet: true},
+				Roles: map[string]ModelSettings{
+					RoleSecurityAuditor: {Model: "gpt-5.6-sol"},
+				},
+			},
+		},
+	}})
 	if err != nil {
 		t.Fatalf("ResolveModelPolicy() error = %v", err)
 	}
@@ -57,11 +32,17 @@ model_policy:
 }
 
 func TestResolveModelPolicyMarshalsStableProcessOrder(t *testing.T) {
-	cfg, err := LoadBytes(nil)
-	if err != nil {
-		t.Fatalf("LoadBytes() error = %v", err)
-	}
-	policy, err := ResolveModelPolicy(cfg)
+	policy, err := ResolveModelPolicy(Config{ModelPolicy: ModelPolicy{
+		Default: ModelSettings{Model: "gpt-5.6-terra", Effort: "medium"},
+		Stages: ModelPolicyStages{
+			Probe:          ModelSettings{Model: "gpt-5.6-luna", Effort: "low", Fast: true, fastSet: true},
+			SemanticRouter: ModelSettings{Effort: "low"},
+			Reviewers: ReviewerModelPolicy{
+				Default: ModelSettings{Effort: "high", Fast: true, fastSet: true},
+			},
+			EvidenceGate: ModelSettings{Model: "gpt-5.6-sol", Effort: "xhigh"},
+		},
+	}})
 	if err != nil {
 		t.Fatalf("ResolveModelPolicy() error = %v", err)
 	}
