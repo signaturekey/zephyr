@@ -6,7 +6,7 @@ language: auto
 model_policy:
   default:
     model: gpt-5.6-terra
-    effort: medium
+    effort: high
     fast: false
   stages:
     probe:
@@ -14,40 +14,28 @@ model_policy:
       effort: low
       fast: true
     semantic_router:
-      model: gpt-5.6-terra
-      effort: low
+      model: gpt-5.6-luna
+      fast: true
     reviewers:
       roles:
         code-reviewer: {}
-        architect-reviewer:
-          model: gpt-5.6-sol
-          effort: high
+        architect-reviewer: {}
         golang-expert: {}
         python-expert: {}
         typescript-expert: {}
         react-expert: {}
         frontend-expert: {}
-        reliability-expert:
-          model: gpt-5.6-sol
-        messaging-expert:
-          model: gpt-5.6-sol
-        infrastructure-expert:
-          model: gpt-5.6-sol
-        storage-expert:
-          model: gpt-5.6-sol
-        security-auditor:
-          model: gpt-5.6-sol
-          effort: high
-        sql-expert:
-          model: gpt-5.6-sol
+        reliability-expert: {}
+        messaging-expert: {}
+        infrastructure-expert: {}
+        storage-expert: {}
+        security-auditor: {}
+        sql-expert: {}
         contract-reviewer: {}
-        qa-expert:
-          effort: low
-        code-simplifier:
-          effort: low
+        qa-expert: {}
+        code-simplifier: {}
     evidence_gate:
       model: gpt-5.6-sol
-      effort: xhigh
 
 limits:
   max_parallel_reviewers: 8

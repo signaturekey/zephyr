@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -249,9 +251,74 @@ func acquireBranch(ctx context.Context, snapshot *Snapshot, repository, branch, 
 
 func clone(ctx context.Context, repository, target string) error {
 	if _, err := git(ctx, nil, "clone", "--quiet", "--no-checkout", "--no-recurse-submodules", "--", repository, target); err != nil {
-		return fmt.Errorf("clone %q: %w", repository, err)
+		fallback, fallbackErr := sshCloneURL(ctx, repository, resolveSSHPort)
+		if fallbackErr != nil {
+			return fmt.Errorf("clone %q: %w; resolve SSH fallback: %v", repository, err, fallbackErr)
+		}
+		if resetErr := resetCloneTarget(target); resetErr != nil {
+			return fmt.Errorf("clone %q: %w; reset target for SSH fallback: %v", repository, err, resetErr)
+		}
+		if _, fallbackErr := git(ctx, nil, "clone", "--quiet", "--no-checkout", "--no-recurse-submodules", "--", fallback, target); fallbackErr != nil {
+			return fmt.Errorf("clone %q: %w; SSH fallback %q: %v", repository, err, fallback, fallbackErr)
+		}
 	}
 	return nil
+}
+
+type sshPortResolver func(context.Context, string) (string, error)
+
+func sshCloneURL(ctx context.Context, repository string, resolvePort sshPortResolver) (string, error) {
+	parsed, err := url.Parse(repository)
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil {
+		return "", errors.New("repository is not an unauthenticated HTTPS URL")
+	}
+
+	path := strings.TrimPrefix(parsed.EscapedPath(), "/")
+	if path == "" {
+		return "", errors.New("repository URL has no path")
+	}
+	port, err := resolvePort(ctx, parsed.Hostname())
+	if err != nil {
+		return "", fmt.Errorf("resolve SSH port: %w", err)
+	}
+	host := parsed.Hostname()
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if port == "22" {
+		return fmt.Sprintf("ssh://git@%s/%s", host, path), nil
+	}
+	return fmt.Sprintf("ssh://git@%s:%s/%s", host, port, path), nil
+}
+
+func resolveSSHPort(ctx context.Context, host string) (string, error) {
+	output, err := exec.CommandContext(ctx, "ssh", "-G", host).Output()
+	if err != nil {
+		return "", fmt.Errorf("run ssh -G: %w", err)
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || fields[0] != "port" {
+			continue
+		}
+		port, err := strconv.ParseUint(fields[1], 10, 16)
+		if err != nil || port == 0 {
+			return "", errors.New("ssh -G returned an invalid port")
+		}
+		return strconv.FormatUint(port, 10), nil
+	}
+	return "", errors.New("ssh -G did not return a port")
+}
+
+func resetCloneTarget(target string) error {
+	base := filepath.Base(target)
+	if !strings.HasPrefix(base, "zephyr-review-") {
+		return fmt.Errorf("refuse to reset unowned clone target %q", target)
+	}
+	if err := os.RemoveAll(target); err != nil {
+		return err
+	}
+	return os.Mkdir(target, 0o700)
 }
 
 func resolveCommit(ctx context.Context, root, value string) (string, error) {
