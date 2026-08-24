@@ -78,74 +78,22 @@ func TestAcquireWorktreeRejectsEscapingUntrackedSymlink(t *testing.T) {
 	require.ErrorContains(t, err, "escapes snapshot root")
 }
 
-func TestSSHCloneURL(t *testing.T) {
-	tests := []struct {
-		name       string
-		repository string
-		port       string
-		want       string
-	}{
-		{
-			name:       "GitHub clone URL",
-			repository: "https://github.com/org/repository.git",
-			port:       "22",
-			want:       "ssh://git@github.com/org/repository.git",
-		},
-		{
-			name:       "GitLab clone URL",
-			repository: "https://gitlab.com/group/repository.git",
-			port:       "22",
-			want:       "ssh://git@gitlab.com/group/repository.git",
-		},
-		{
-			name:       "Bitbucket clone URL",
-			repository: "https://bitbucket.org/workspace/repository.git",
-			port:       "12345",
-			want:       "ssh://git@bitbucket.org:12345/workspace/repository.git",
-		},
-		{name: "local repository", repository: "/tmp/repository", port: "22"},
-		{name: "HTTPS URL with credentials", repository: "https://user@example.com/org/repository.git", port: "22"},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := sshCloneURL(context.Background(), test.repository, func(_ context.Context, _ string) (string, error) {
-				return test.port, nil
-			})
-			if test.want == "" {
-				assert.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, test.want, got)
-		})
-	}
-}
-
-func TestCloneFallsBackFromHTTPSToSSH(t *testing.T) {
+func TestCloneUsesExactRepositoryWithoutTransportFallback(t *testing.T) {
 	fakeGitDir := t.TempDir()
 	fakeGit := filepath.Join(fakeGitDir, "git")
-	fakeSSH := filepath.Join(fakeGitDir, "ssh")
+	callLog := filepath.Join(fakeGitDir, "calls")
 	repository := "https://example.test/org/repository.git"
-	sshRepository := "ssh://git@example.test:12345/org/repository.git"
 	script := "#!/bin/sh\n" +
-		"case \"$6\" in\n" +
-		"  \"" + repository + "\") mkdir -p \"$7/.git\"; exit 1 ;;\n" +
-		"  \"" + sshRepository + "\") mkdir -p \"$7/.git\"; exit 0 ;;\n" +
-		"  *) exit 2 ;;\n" +
-		"esac\n"
+		"printf '%s\\n' \"$6\" >> \"" + callLog + "\"\n" +
+		"exit 1\n"
 	require.NoError(t, os.WriteFile(fakeGit, []byte(script), 0o700))
-	sshScript := "#!/bin/sh\n[ \"$1\" = -G ] && [ \"$2\" = example.test ] || exit 1\nprintf 'port 12345\\n'\n"
-	require.NoError(t, os.WriteFile(fakeSSH, []byte(sshScript), 0o700))
 	t.Setenv("PATH", fakeGitDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	target, err := os.MkdirTemp("", "zephyr-review-")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(target)) })
-
-	require.NoError(t, clone(context.Background(), repository, target))
-	_, err = os.Stat(filepath.Join(target, ".git"))
-	require.NoError(t, err)
+	err := clone(context.Background(), repository, t.TempDir())
+	require.ErrorContains(t, err, `clone "`+repository+`"`)
+	calls, readErr := os.ReadFile(callLog)
+	require.NoError(t, readErr)
+	assert.Equal(t, repository+"\n", string(calls))
 }
 
 func newRepository(t *testing.T) string {

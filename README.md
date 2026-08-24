@@ -202,6 +202,13 @@ zephyr review --branch feature --base main --repo https://github.com/org/reposit
 Zephyr разрешает base и head, вычисляет merge base, делает detached checkout head и
 ревьюит диапазон `merge-base..head`.
 
+Для удалённого review `--repo` должен содержать точный Git clone URL. CLI использует
+его без преобразования HTTPS в SSH и без угадывания SSH-порта. При запуске по ссылке на
+pull request тонкий skill берёт точный source из явного ввода, read-only provider
+metadata или remote подходящего локального checkout. Он не открывает browser/provider
+UI и не содержит provider-specific hosts или ports. Сам frozen snapshot по-прежнему
+создаёт `internal/snapshot`.
+
 ### Дополнительные параметры scope
 
 ```bash

@@ -43,6 +43,21 @@ uses the current user's permissions and does not expand the review authorization
 If the user just asks to review local changes, use `--worktree --repo <current-repo>`.
 Do not require a clean checkout and do not split staged and unstaged changes.
 
+For an explicit local path or Git clone URL, pass the source exactly as supplied. For
+a pull-request page URL, resolve the source and target refs plus an exact Git source
+before invoking Zephyr. Use, in order, a clone URL explicitly supplied by the user or
+linked requirements, a provider-supplied clone URL returned by unambiguously read-only
+MCP, or the remote URL of an unambiguously matching local checkout. Preserve the
+selected URL's scheme, user, host, port, and path exactly.
+
+Use provider MCP for pull-request metadata. Do not open a browser or provider UI to
+discover clone URLs, derive a Git URL by rewriting a pull-request page URL, translate
+HTTPS to SSH, infer a custom SSH port, or encode provider-specific hosts or ports.
+Zephyr clones the exact `--repo` source into its own disposable snapshot. If no exact
+source is available, ask the user for a Git clone URL or local checkout and do not run
+Zephyr with a guessed source. This is a source acquisition failure, not an optional
+context coverage limitation.
+
 ## Collect external context
 
 Before every review, read

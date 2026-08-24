@@ -67,6 +67,13 @@ read-only sandbox. Reviewers do not see one another's output.
 - commit: clone, resolve and detach the commit, diff its first parent or empty tree;
 - branch: clone, resolve base/head, detach head, diff merge-base through head.
 
+For a remote review, the thin harness resolves an exact Git source from explicit user
+input, unambiguously read-only provider metadata, or a matching local checkout's
+remote. It must not use a browser or provider UI for source discovery, encode
+provider-specific hosts or ports, translate protocols, synthesize Git URLs, or infer
+SSH ports. `internal/snapshot` clones the `--repo` source exactly as received. Source
+discovery is outside snapshot determinism.
+
 Never initialize submodules. Never mutate the source repository. Do not reject a run
 because the source has staged, unstaged, untracked, or later-changing state. Reports
 belong to the frozen snapshot already created; there is no stale-head ceremony.
