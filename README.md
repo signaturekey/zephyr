@@ -347,11 +347,17 @@ read-only MCP-операции skill читает acceptance criteria и свя�
 ## Конфигурация
 
 Zephyr всегда начинает со встроенного [`configs/default.yaml`](configs/default.yaml)
-и накладывает на него не более одного project overlay:
+и накладывает конфигурацию в таком порядке:
 
-1. файл из `--config`, если флаг указан;
-2. иначе `.zephyr/config.yaml` из замороженного снапшота, если он существует;
-3. иначе остаются только встроенные defaults.
+1. `.zephyr/config.yaml` из замороженного снапшота, если он существует;
+2. пользовательский `~/.config/zephyr/config.yaml`, если он существует;
+3. файл из `--config`, если флаг указан;
+4. отдельные CLI flags.
+
+Если указан `--config`, автоматический project config из снапшота не загружается —
+это сохраняет прежнюю семантику флага. Пользовательский файл является обычным partial
+YAML и позволяет менять личные defaults без изменений checkout Zephyr. Его отсутствие
+не считается ошибкой.
 
 Конфигурация управляет concurrency, enablement ролей, routing rules, model/effort для
 semantic router, reviewers и evidence gate, а также path policies детерминированного

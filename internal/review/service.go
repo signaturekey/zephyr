@@ -50,6 +50,7 @@ type RuntimeFactory func(context.Context, config.Config) (agent.Runtime, error)
 type Service struct {
 	RuntimeFactory RuntimeFactory
 	Now            func() time.Time
+	UserConfigPath func() (string, error)
 }
 
 func (service Service) Run(ctx context.Context, request Request) (Result, error) {
@@ -58,6 +59,9 @@ func (service Service) Run(ctx context.Context, request Request) (Result, error)
 	}
 	if service.Now == nil {
 		service.Now = time.Now
+	}
+	if service.UserConfigPath == nil {
+		service.UserConfigPath = defaultUserConfigPath
 	}
 	if request.Repository == "" {
 		request.Repository = "."
@@ -74,7 +78,11 @@ func (service Service) Run(ctx context.Context, request Request) (Result, error)
 	}
 	defer snap.Cleanup()
 
-	cfg, err := loadConfig(request.ConfigPath, snap.Root)
+	userConfigPath, err := service.UserConfigPath()
+	if err != nil {
+		return Result{}, fmt.Errorf("resolve user config path: %w", err)
+	}
+	cfg, err := loadConfig(request.ConfigPath, snap.Root, userConfigPath)
 	if err != nil {
 		return Result{}, err
 	}
@@ -210,17 +218,41 @@ func (service Service) Run(ctx context.Context, request Request) (Result, error)
 	return Result{Review: finalReport, Markdown: markdown, JSON: jsonReport, SnapshotRoot: snap.Root}, nil
 }
 
-func loadConfig(explicit, snapshotRoot string) (config.Config, error) {
-	path := explicit
-	if path == "" {
+func loadConfig(explicit, snapshotRoot, user string) (config.Config, error) {
+	paths := make([]string, 0, 3)
+	if explicit == "" {
 		candidate := filepath.Join(snapshotRoot, ".zephyr", "config.yaml")
 		if _, err := os.Stat(candidate); err == nil {
-			path = candidate
+			paths = append(paths, candidate)
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return config.Config{}, fmt.Errorf("inspect project config: %w", err)
 		}
 	}
-	return config.Load(path)
+	if user != "" && (explicit == "" || filepath.Clean(user) != filepath.Clean(explicit)) {
+		info, err := os.Stat(user)
+		switch {
+		case err == nil:
+			if !info.Mode().IsRegular() {
+				return config.Config{}, fmt.Errorf("user config %q must be a regular file", user)
+			}
+			paths = append(paths, user)
+		case errors.Is(err, os.ErrNotExist):
+		case err != nil:
+			return config.Config{}, fmt.Errorf("inspect user config %q: %w", user, err)
+		}
+	}
+	if explicit != "" {
+		paths = append(paths, explicit)
+	}
+	return config.Load(paths...)
+}
+
+func defaultUserConfigPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "zephyr", "config.yaml"), nil
 }
 
 func readContexts(paths []string) ([]agent.ContextDocument, error) {

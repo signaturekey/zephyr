@@ -34,7 +34,7 @@ type ReviewCmd struct {
 	Commit      string   `help:"Проверить один commit."`
 	Branch      string   `help:"Проверить ветку относительно --base."`
 	Base        string   `help:"Base ref для --branch."`
-	Config      string   `help:"Project config override; default .zephyr/config.yaml из snapshot, затем встроенные defaults." type:"path"`
+	Config      string   `help:"Explicit config override; иначе используются project .zephyr/config.yaml и user ~/.config/zephyr/config.yaml." type:"path"`
 	Context     []string `help:"Frozen Markdown/JSON context; flag можно повторять." type:"path"`
 	Coverage    []string `name:"coverage-limit" help:"Известное ограничение покрытия; flag можно повторять."`
 	IncludeRole []string `name:"include-role" help:"Явно включить reviewer role; flag можно повторять."`

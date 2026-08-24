@@ -84,6 +84,30 @@ redaction:
 	}
 }
 
+func TestLoadBytesAppliesOverlaysInOrder(t *testing.T) {
+	cfg, err := LoadBytes(
+		[]byte("profile: thorough\nlimits:\n  max_parallel_reviewers: 2\nroles:\n  code-simplifier:\n    enabled: false\n"),
+		[]byte("profile: standard\nlimits:\n  max_parallel_reviewers: 3\nroles:\n  code-simplifier:\n    enabled: true\n"),
+		[]byte("profile: thorough\nlimits:\n  max_parallel_reviewers: 4\nroles:\n  code-simplifier:\n    enabled: false\n"),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, ProfileThorough, cfg.Profile)
+	assert.Equal(t, 4, cfg.Limits.MaxParallelReviewers)
+	assert.False(t, cfg.Roles[RoleCodeSimplifier].Enabled)
+}
+
+func TestLoadAppliesConfigFilesInOrder(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "first.yaml")
+	second := filepath.Join(root, "second.yaml")
+	require.NoError(t, os.WriteFile(first, []byte("language: go\n"), 0o600))
+	require.NoError(t, os.WriteFile(second, []byte("language: python\n"), 0o600))
+
+	cfg, err := Load(first, second)
+	require.NoError(t, err)
+	assert.Equal(t, "python", cfg.Language)
+}
+
 func TestLoadSupportsFileAndRepositoryDirectory(t *testing.T) {
 	repository := t.TempDir()
 	configDir := filepath.Join(repository, ".zephyr")

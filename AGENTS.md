@@ -92,7 +92,10 @@ Keep these invariants:
 The existing `configs/default.yaml` remains the canonical out-of-box configuration.
 Users must not need a project config or flags for a normal local review. Preserve its
 models, effort, per-role overrides, role enablement, routing rules, and concurrency
-default. Project `.zephyr/config.yaml` is an optional overlay.
+default. Project `.zephyr/config.yaml` and user `~/.config/zephyr/config.yaml` are
+optional overlays. Apply configuration in this order: embedded defaults, project
+config, user config, explicit `--config`, then CLI flags. An explicit `--config`
+continues to replace automatic project-config discovery.
 
 ## Review and evidence
 
@@ -134,7 +137,7 @@ read-only tool allowlist; approval policy `never` alone is not such a policy.
 ```text
 cmd/zephyr/          public `review` and `version` commands
 internal/snapshot/  disposable Git acquisition
-internal/config/    embedded defaults and optional overlay
+internal/config/    embedded defaults and ordered optional overlays
 internal/routing/   protected roles, semantic request, fallback, role views
 internal/agent/     thin Aether consumer
 internal/evidence/  deterministic precheck and verdict integrity

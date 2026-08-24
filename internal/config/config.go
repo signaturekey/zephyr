@@ -107,24 +107,41 @@ func KnownRoles() []string {
 	}
 }
 
-func Load(projectPath string) (Config, error) {
-	var project []byte
-	if projectPath != "" {
-		resolved, err := resolveProjectPath(projectPath)
+func Load(paths ...string) (Config, error) {
+	layers := make([]configLayer, 0, len(paths))
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		resolved, err := resolveConfigPath(path)
 		if err != nil {
 			return Config{}, err
 		}
 
-		project, err = os.ReadFile(resolved)
+		data, err := os.ReadFile(resolved)
 		if err != nil {
-			return Config{}, fmt.Errorf("read project config %q: %w", resolved, err)
+			return Config{}, fmt.Errorf("read config %q: %w", resolved, err)
 		}
+		layers = append(layers, configLayer{source: fmt.Sprintf("config %q", resolved), data: data})
 	}
 
-	return LoadBytes(project)
+	return loadLayers(layers)
 }
 
-func LoadBytes(project []byte) (Config, error) {
+func LoadBytes(overlays ...[]byte) (Config, error) {
+	layers := make([]configLayer, 0, len(overlays))
+	for index, overlay := range overlays {
+		layers = append(layers, configLayer{source: fmt.Sprintf("config overlay %d", index+1), data: overlay})
+	}
+	return loadLayers(layers)
+}
+
+type configLayer struct {
+	source string
+	data   []byte
+}
+
+func loadLayers(layers []configLayer) (Config, error) {
 	defaultYAML, err := configassets.ReadDefault()
 	if err != nil {
 		return Config{}, fmt.Errorf("read embedded defaults: %w", err)
@@ -136,8 +153,11 @@ func LoadBytes(project []byte) (Config, error) {
 
 	var cfg Config
 	apply(&cfg, defaults)
-	if len(bytes.TrimSpace(project)) != 0 {
-		overlay, err := decodePartial(project, "project config")
+	for _, layer := range layers {
+		if len(bytes.TrimSpace(layer.data)) == 0 {
+			continue
+		}
+		overlay, err := decodePartial(layer.data, layer.source)
 		if err != nil {
 			return Config{}, err
 		}
@@ -425,15 +445,15 @@ func normalize(cfg *Config) {
 	cfg.Redaction.DenyPatterns = uniqueStrings(cfg.Redaction.DenyPatterns)
 }
 
-func resolveProjectPath(projectPath string) (string, error) {
-	info, err := os.Stat(projectPath)
+func resolveConfigPath(configPath string) (string, error) {
+	info, err := os.Stat(configPath)
 	if err != nil {
-		return "", fmt.Errorf("inspect project config path %q: %w", projectPath, err)
+		return "", fmt.Errorf("inspect config path %q: %w", configPath, err)
 	}
 	if info.IsDir() {
-		return filepath.Join(projectPath, ".zephyr", "config.yaml"), nil
+		return filepath.Join(configPath, ".zephyr", "config.yaml"), nil
 	}
-	return projectPath, nil
+	return configPath, nil
 }
 
 func validatePattern(pattern string) error {

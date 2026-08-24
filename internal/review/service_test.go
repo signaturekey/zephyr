@@ -70,7 +70,10 @@ func TestServiceRunsOneSnapshotParallelRolesGateAndReport(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(repo, "main.go"), []byte("package demo\n\nconst value = 2\n"), 0o644))
 
 	runtime := &fakeRuntime{}
-	service := Service{RuntimeFactory: func(context.Context, config.Config) (agent.Runtime, error) { return runtime, nil }}
+	service := Service{
+		RuntimeFactory: func(context.Context, config.Config) (agent.Runtime, error) { return runtime, nil },
+		UserConfigPath: func() (string, error) { return "", nil },
+	}
 	result, err := service.Run(context.Background(), Request{
 		Repository: repo, Source: snapshot.SourceWorktree, MaxParallel: 3,
 		CoverageLimits: []string{"Jira MCP failed: connection timed out"},
@@ -86,6 +89,50 @@ func TestServiceRunsOneSnapshotParallelRolesGateAndReport(t *testing.T) {
 	runtime.mu.Lock()
 	assert.Equal(t, 1, runtime.gateRuns)
 	runtime.mu.Unlock()
+}
+
+func TestLoadConfigAppliesProjectUserAndExplicitPrecedence(t *testing.T) {
+	snapshotRoot := t.TempDir()
+	projectPath := filepath.Join(snapshotRoot, ".zephyr", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(projectPath), 0o700))
+	require.NoError(t, os.WriteFile(projectPath, []byte("profile: thorough\nlanguage: go\nrestricted_paths: [project-only/**]\n"), 0o600))
+
+	userPath := filepath.Join(t.TempDir(), ".config", "zephyr", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o700))
+	require.NoError(t, os.WriteFile(userPath, []byte("profile: standard\nlanguage: python\nrestricted_paths: [user-only/**]\n"), 0o600))
+
+	cfg, err := loadConfig("", snapshotRoot, userPath)
+	require.NoError(t, err)
+	assert.Equal(t, config.ProfileStandard, cfg.Profile)
+	assert.Equal(t, "python", cfg.Language)
+	assert.Contains(t, cfg.RestrictedPaths, "project-only/**")
+	assert.Contains(t, cfg.RestrictedPaths, "user-only/**")
+
+	explicitPath := filepath.Join(t.TempDir(), "explicit.yaml")
+	require.NoError(t, os.WriteFile(explicitPath, []byte("profile: thorough\nlanguage: typescript\nrestricted_paths: [explicit-only/**]\n"), 0o600))
+	cfg, err = loadConfig(explicitPath, snapshotRoot, userPath)
+	require.NoError(t, err)
+	assert.Equal(t, config.ProfileThorough, cfg.Profile)
+	assert.Equal(t, "typescript", cfg.Language)
+	assert.NotContains(t, cfg.RestrictedPaths, "project-only/**")
+	assert.Contains(t, cfg.RestrictedPaths, "user-only/**")
+	assert.Contains(t, cfg.RestrictedPaths, "explicit-only/**")
+}
+
+func TestLoadConfigIgnoresMissingUserConfig(t *testing.T) {
+	snapshotRoot := t.TempDir()
+	projectPath := filepath.Join(snapshotRoot, ".zephyr", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(projectPath), 0o700))
+	require.NoError(t, os.WriteFile(projectPath, []byte("profile: thorough\n"), 0o600))
+
+	cfg, err := loadConfig("", snapshotRoot, filepath.Join(t.TempDir(), "missing.yaml"))
+	require.NoError(t, err)
+	assert.Equal(t, config.ProfileThorough, cfg.Profile)
+}
+
+func TestLoadConfigRejectsUserConfigDirectory(t *testing.T) {
+	_, err := loadConfig("", t.TempDir(), t.TempDir())
+	require.ErrorContains(t, err, "must be a regular file")
 }
 
 func git(t *testing.T, repo string, args ...string) {
