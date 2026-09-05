@@ -217,6 +217,9 @@ func Validate(cfg Config) error {
 			return invalid("roles contains unknown role %q", role)
 		}
 	}
+	if !cfg.Roles[RoleCodeReviewer].Enabled {
+		return invalid("roles.%s must be enabled", RoleCodeReviewer)
+	}
 
 	for i, rule := range cfg.Routing {
 		if len(rule.When.Paths) == 0 && len(rule.When.Signals) == 0 {
