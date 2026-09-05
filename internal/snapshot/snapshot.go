@@ -160,12 +160,20 @@ func acquireWorktree(ctx context.Context, snapshot *Snapshot, repository string)
 		diff.Write(part)
 	}
 	snapshot.Diff = diff.String()
-	pathsRaw, err := git(ctx, nil, "-C", repoRoot, "diff", "--name-only", "-z", "HEAD", "--")
+	paths, err := changedPaths(ctx, snapshot.Root, snapshot.Untracked)
 	if err != nil {
-		return fmt.Errorf("collect changed paths: %w", err)
+		return err
 	}
-	snapshot.ChangedPaths = uniqueSorted(append(splitNUL(pathsRaw), snapshot.Untracked...))
+	snapshot.ChangedPaths = paths
 	return nil
+}
+
+func changedPaths(ctx context.Context, root string, untracked []string) ([]string, error) {
+	paths, err := git(ctx, nil, "-C", root, "diff", "--name-only", "-z", "HEAD", "--")
+	if err != nil {
+		return nil, fmt.Errorf("collect changed paths: %w", err)
+	}
+	return uniqueSorted(append(splitNUL(paths), untracked...)), nil
 }
 
 func acquireCommit(ctx context.Context, snapshot *Snapshot, repository, commit string) error {

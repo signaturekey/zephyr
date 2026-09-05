@@ -40,6 +40,39 @@ func TestAcquireWorktreeCombinesTrackedAndUntrackedChanges(t *testing.T) {
 	assert.Equal(t, before, gitCommand(t, repo, "status", "--porcelain"))
 }
 
+func TestAcquireWorktreeUsesFrozenSnapshotForChangedPaths(t *testing.T) {
+	repo := newRepository(t)
+	writeFile(t, filepath.Join(repo, "f.go"), "package demo\n\nconst f = 1\n")
+	writeFile(t, filepath.Join(repo, "g.go"), "package demo\n\nconst g = 1\n")
+	gitCommand(t, repo, "add", "f.go", "g.go")
+	gitCommand(t, repo, "commit", "-m", "initial")
+	writeFile(t, filepath.Join(repo, "f.go"), "package demo\n\nconst f = 2\n")
+
+	realGit, err := exec.LookPath("git")
+	require.NoError(t, err)
+	wrapperDir := t.TempDir()
+	wrapper := filepath.Join(wrapperDir, "git")
+	script := "#!/bin/sh\n" +
+		"\"$ZEPHYR_REAL_GIT\" \"$@\"\n" +
+		"status=$?\n" +
+		"if [ \"$status\" -eq 0 ] && [ \"$1\" = \"-C\" ] && [ \"$2\" = \"$ZEPHYR_TEST_REPOSITORY\" ] && [ \"$3\" = \"diff\" ] && [ \"$4\" = \"--binary\" ]; then\n" +
+		"  \"$ZEPHYR_REAL_GIT\" -C \"$ZEPHYR_TEST_REPOSITORY\" checkout -- f.go\n" +
+		"  printf 'package demo\\n\\nconst g = 2\\n' > \"$ZEPHYR_TEST_REPOSITORY/g.go\"\n" +
+		"fi\n" +
+		"exit \"$status\"\n"
+	require.NoError(t, os.WriteFile(wrapper, []byte(script), 0o700))
+	t.Setenv("PATH", wrapperDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("ZEPHYR_REAL_GIT", realGit)
+	t.Setenv("ZEPHYR_TEST_REPOSITORY", repo)
+
+	snapshot, err := Acquire(context.Background(), Request{Repository: repo, Source: SourceWorktree})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, snapshot.Cleanup()) })
+
+	assert.Equal(t, []string{"f.go"}, snapshot.ChangedPaths)
+	assert.Contains(t, snapshot.Diff, "+const f = 2")
+}
+
 func TestAcquireCommitAndBranch(t *testing.T) {
 	repo := newRepository(t)
 	writeFile(t, filepath.Join(repo, "main.go"), "package demo\n")
