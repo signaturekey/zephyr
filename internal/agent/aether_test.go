@@ -16,6 +16,11 @@ func TestFilterDiffReturnsOnlyRolePrimaryPaths(t *testing.T) {
 	assert.False(t, strings.Contains(filtered, "b/web.ts"))
 }
 
+func TestThreadConfigSetsServiceTierFromFast(t *testing.T) {
+	assert.Equal(t, map[string]any{"service_tier": "priority"}, threadConfig(true))
+	assert.Equal(t, map[string]any{"service_tier": "default"}, threadConfig(false))
+}
+
 func TestModelOverrideTreatsInheritAsUnset(t *testing.T) {
 	assert.Empty(t, modelOverride("inherit"))
 	assert.Equal(t, "gpt-5.6-terra", modelOverride("gpt-5.6-terra"))

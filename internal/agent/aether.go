@@ -122,6 +122,7 @@ func (runtime *AetherRuntime) run(ctx context.Context, settings config.ModelSett
 	model := modelOverride(settings.Model)
 	thread, err := runtime.client.StartThread(ctx, aether.ThreadOptions{
 		Model: model, CWD: runtime.neutral, ApprovalPolicy: "never", Sandbox: "read-only", Ephemeral: true,
+		Config: threadConfig(settings.Fast),
 	})
 	if err != nil {
 		return nil, err
@@ -145,6 +146,14 @@ func modelOverride(model string) string {
 		return ""
 	}
 	return model
+}
+
+func threadConfig(fast bool) map[string]any {
+	tier := "default"
+	if fast {
+		tier = "priority"
+	}
+	return map[string]any{"service_tier": tier}
 }
 
 func routerPrompt(request routing.Request, snap *snapshot.Snapshot, contextFiles []ContextDocument) (string, error) {
