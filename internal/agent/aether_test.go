@@ -16,6 +16,11 @@ func TestFilterDiffReturnsOnlyRolePrimaryPaths(t *testing.T) {
 	assert.False(t, strings.Contains(filtered, "b/web.ts"))
 }
 
+func TestModelOverrideTreatsInheritAsUnset(t *testing.T) {
+	assert.Empty(t, modelOverride("inherit"))
+	assert.Equal(t, "gpt-5.6-terra", modelOverride("gpt-5.6-terra"))
+}
+
 func TestPacketTextExposesOnlyFrozenSnapshotPath(t *testing.T) {
 	snap := &snapshot.Snapshot{
 		Root:       "/tmp/zephyr-review-frozen",
