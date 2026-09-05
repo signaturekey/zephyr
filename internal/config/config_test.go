@@ -147,6 +147,7 @@ func TestLoadBytesRejectsInvalidConfig(t *testing.T) {
 		{name: "language", project: "version: 1\nlanguage: rust\n", want: "language must be"},
 		{name: "parallel exceeds thorough", project: "version: 1\nlimits:\n  max_parallel_reviewers: 18\n", want: "cannot exceed"},
 		{name: "unknown role", project: "version: 1\nroles:\n  oracle:\n    enabled: true\n", want: "unknown role"},
+		{name: "code reviewer disabled", project: "version: 1\nroles:\n  code-reviewer:\n    enabled: false\n", want: "roles.code-reviewer must be enabled"},
 		{name: "unknown role field", project: "version: 1\nroles:\n  golang-expert:\n    active: true\n", want: "field active not found"},
 		{name: "empty routing condition", project: "version: 1\nrouting:\n  - when: {}\n    add_roles: [golang-expert]\n", want: "must contain paths or signals"},
 		{name: "invalid glob", project: "version: 1\nrouting:\n  - when:\n      paths: ['[']\n    add_roles: [golang-expert]\n", want: "invalid glob"},

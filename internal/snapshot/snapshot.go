@@ -126,7 +126,7 @@ func acquireWorktree(ctx context.Context, snapshot *Snapshot, repository string)
 	if _, err := git(ctx, nil, "-C", snapshot.Root, "checkout", "--quiet", "--detach", snapshot.HeadSHA); err != nil {
 		return fmt.Errorf("checkout snapshot HEAD: %w", err)
 	}
-	trackedDiff, err := git(ctx, nil, "-C", repoRoot, "diff", "--binary", "--find-renames", "HEAD", "--")
+	trackedDiff, err := git(ctx, nil, "-C", repoRoot, "diff", "--binary", "--find-renames", "--src-prefix=a/", "--dst-prefix=b/", "HEAD", "--")
 	if err != nil {
 		return fmt.Errorf("collect worktree diff: %w", err)
 	}
@@ -150,7 +150,7 @@ func acquireWorktree(ctx context.Context, snapshot *Snapshot, repository string)
 	var diff bytes.Buffer
 	diff.Write(trackedDiff)
 	for _, relative := range snapshot.Untracked {
-		part, code, err := gitExit(ctx, nil, "-C", snapshot.Root, "diff", "--no-index", "--binary", "--", "/dev/null", relative)
+		part, code, err := gitExit(ctx, nil, "-C", snapshot.Root, "diff", "--no-index", "--binary", "--src-prefix=a/", "--dst-prefix=b/", "--", "/dev/null", relative)
 		if code != 0 && code != 1 {
 			return fmt.Errorf("build untracked diff for %q: %w", relative, err)
 		}
@@ -160,12 +160,20 @@ func acquireWorktree(ctx context.Context, snapshot *Snapshot, repository string)
 		diff.Write(part)
 	}
 	snapshot.Diff = diff.String()
-	pathsRaw, err := git(ctx, nil, "-C", repoRoot, "diff", "--name-only", "-z", "HEAD", "--")
+	paths, err := changedPaths(ctx, snapshot.Root, snapshot.Untracked)
 	if err != nil {
-		return fmt.Errorf("collect changed paths: %w", err)
+		return err
 	}
-	snapshot.ChangedPaths = uniqueSorted(append(splitNUL(pathsRaw), snapshot.Untracked...))
+	snapshot.ChangedPaths = paths
 	return nil
+}
+
+func changedPaths(ctx context.Context, root string, untracked []string) ([]string, error) {
+	paths, err := git(ctx, nil, "-C", root, "diff", "--name-only", "-z", "HEAD", "--")
+	if err != nil {
+		return nil, fmt.Errorf("collect changed paths: %w", err)
+	}
+	return uniqueSorted(append(splitNUL(paths), untracked...)), nil
 }
 
 func acquireCommit(ctx context.Context, snapshot *Snapshot, repository, commit string) error {
@@ -194,7 +202,7 @@ func acquireCommit(ctx context.Context, snapshot *Snapshot, repository, commit s
 	if len(fields) > 1 {
 		base = fields[1]
 	}
-	diff, err := git(ctx, nil, "-C", snapshot.Root, "diff", "--binary", "--find-renames", base, head, "--")
+	diff, err := git(ctx, nil, "-C", snapshot.Root, "diff", "--binary", "--find-renames", "--src-prefix=a/", "--dst-prefix=b/", base, head, "--")
 	if err != nil {
 		return fmt.Errorf("build commit diff: %w", err)
 	}
@@ -210,14 +218,27 @@ func acquireCommit(ctx context.Context, snapshot *Snapshot, repository, commit s
 }
 
 func acquireBranch(ctx context.Context, snapshot *Snapshot, repository, branch, base string) error {
+	var sourceHead, sourceBase string
+	if localRepository(repository) {
+		var err error
+		sourceHead, err = resolveCommit(ctx, repository, branch)
+		if err != nil {
+			return fmt.Errorf("resolve branch %q in source repository: %w", branch, err)
+		}
+		sourceBase, err = resolveCommit(ctx, repository, base)
+		if err != nil {
+			return fmt.Errorf("resolve base %q in source repository: %w", base, err)
+		}
+	}
+
 	if err := clone(ctx, repository, snapshot.Root); err != nil {
 		return err
 	}
-	head, err := resolveRef(ctx, snapshot.Root, branch)
+	head, err := resolveSnapshotRef(ctx, snapshot.Root, branch, sourceHead)
 	if err != nil {
 		return fmt.Errorf("resolve branch %q: %w", branch, err)
 	}
-	baseSHA, err := resolveRef(ctx, snapshot.Root, base)
+	baseSHA, err := resolveSnapshotRef(ctx, snapshot.Root, base, sourceBase)
 	if err != nil {
 		return fmt.Errorf("resolve base %q: %w", base, err)
 	}
@@ -229,7 +250,7 @@ func acquireBranch(ctx context.Context, snapshot *Snapshot, repository, branch, 
 	if _, err := git(ctx, nil, "-C", snapshot.Root, "checkout", "--quiet", "--detach", head); err != nil {
 		return fmt.Errorf("checkout branch head: %w", err)
 	}
-	diff, err := git(ctx, nil, "-C", snapshot.Root, "diff", "--binary", "--find-renames", mergeBase, head, "--")
+	diff, err := git(ctx, nil, "-C", snapshot.Root, "diff", "--binary", "--find-renames", "--src-prefix=a/", "--dst-prefix=b/", mergeBase, head, "--")
 	if err != nil {
 		return fmt.Errorf("build branch diff: %w", err)
 	}
@@ -259,13 +280,55 @@ func resolveCommit(ctx context.Context, root, value string) (string, error) {
 	return strings.TrimSpace(resolved), err
 }
 
+func localRepository(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+func resolveSnapshotRef(ctx context.Context, root, value, resolvedSourceRef string) (string, error) {
+	if resolvedSourceRef == "" {
+		return resolveRef(ctx, root, value)
+	}
+	if resolved, err := resolveCommit(ctx, root, resolvedSourceRef); err == nil {
+		return resolved, nil
+	}
+	if _, err := git(ctx, nil, "-C", root, "fetch", "--quiet", "origin", resolvedSourceRef); err != nil {
+		return "", fmt.Errorf("fetch source commit %q: %w", resolvedSourceRef, err)
+	}
+	resolved, err := resolveCommit(ctx, root, resolvedSourceRef)
+	if err != nil {
+		return "", fmt.Errorf("resolve source commit %q in clone: %w", resolvedSourceRef, err)
+	}
+	return resolved, nil
+}
+
 func resolveRef(ctx context.Context, root, value string) (string, error) {
-	for _, candidate := range []string{value, "origin/" + strings.TrimPrefix(value, "origin/")} {
+	candidates := []string{value}
+	short := strings.TrimPrefix(value, "origin/")
+	short = strings.TrimPrefix(short, "refs/heads/")
+	if short != value {
+		candidates = append(candidates, short, "origin/"+short)
+	} else {
+		candidates = append(candidates, "origin/"+short)
+	}
+	for _, candidate := range uniqueStrings(candidates) {
 		if resolved, err := resolveCommit(ctx, root, candidate); err == nil {
 			return resolved, nil
 		}
 	}
 	return "", fmt.Errorf("ref %q is not present in clone", value)
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, ok := seen[value]; !ok {
+			seen[value] = struct{}{}
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 func copyUntracked(sourceRoot, targetRoot, relative string) error {
@@ -367,6 +430,7 @@ func git(ctx context.Context, input []byte, args ...string) ([]byte, error) {
 
 func gitExit(ctx context.Context, input []byte, args ...string) ([]byte, int, error) {
 	command := exec.CommandContext(ctx, "git", args...)
+	command.Env = gitEnvironment(os.Environ())
 	if input != nil {
 		command.Stdin = bytes.NewReader(input)
 	}
@@ -382,4 +446,23 @@ func gitExit(ctx context.Context, input []byte, args ...string) ([]byte, int, er
 		return stdout.Bytes(), exit.ExitCode(), fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.Bytes(), -1, fmt.Errorf("run git: %w", err)
+}
+
+func gitEnvironment(environment []string) []string {
+	blocked := map[string]struct{}{
+		"GIT_COMMON_DIR":                   {},
+		"GIT_DIR":                          {},
+		"GIT_INDEX_FILE":                   {},
+		"GIT_OBJECT_DIRECTORY":             {},
+		"GIT_ALTERNATE_OBJECT_DIRECTORIES": {},
+		"GIT_WORK_TREE":                    {},
+	}
+	filtered := make([]string, 0, len(environment))
+	for _, value := range environment {
+		name, _, _ := strings.Cut(value, "=")
+		if _, ok := blocked[name]; !ok {
+			filtered = append(filtered, value)
+		}
+	}
+	return filtered
 }

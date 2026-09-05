@@ -119,8 +119,10 @@ func (runtime *AetherRuntime) run(ctx context.Context, settings config.ModelSett
 	if err != nil {
 		return nil, fmt.Errorf("read output schema: %w", err)
 	}
+	model := modelOverride(settings.Model)
 	thread, err := runtime.client.StartThread(ctx, aether.ThreadOptions{
-		Model: settings.Model, CWD: runtime.neutral, ApprovalPolicy: "never", Sandbox: "read-only", Ephemeral: true,
+		Model: model, CWD: runtime.neutral, ApprovalPolicy: "never", Sandbox: "read-only", Ephemeral: true,
+		Config: threadConfig(settings.Fast),
 	})
 	if err != nil {
 		return nil, err
@@ -128,7 +130,7 @@ func (runtime *AetherRuntime) run(ctx context.Context, settings config.ModelSett
 	defer thread.Close()
 	result, err := thread.Run(ctx, aether.TurnRequest{
 		Input:          []aether.Input{{Type: "text", Text: prompt}},
-		Model:          settings.Model,
+		Model:          model,
 		Effort:         settings.Effort,
 		ApprovalPolicy: "never",
 		OutputSchema:   json.RawMessage(outputSchema),
@@ -137,6 +139,21 @@ func (runtime *AetherRuntime) run(ctx context.Context, settings config.ModelSett
 		return nil, err
 	}
 	return append([]byte(nil), result.JSON...), nil
+}
+
+func modelOverride(model string) string {
+	if model == "inherit" {
+		return ""
+	}
+	return model
+}
+
+func threadConfig(fast bool) map[string]any {
+	tier := "default"
+	if fast {
+		tier = "priority"
+	}
+	return map[string]any{"service_tier": tier}
 }
 
 func routerPrompt(request routing.Request, snap *snapshot.Snapshot, contextFiles []ContextDocument) (string, error) {

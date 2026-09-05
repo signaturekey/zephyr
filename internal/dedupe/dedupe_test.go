@@ -26,6 +26,24 @@ func TestGroupFindingsKeepsDifferentImpactSeparate(t *testing.T) {
 	assert.Len(t, GroupFindings([]protocol.CandidateFinding{left, right}), 2)
 }
 
+func TestGroupFindingsKeepsCaseSensitivePathsSeparate(t *testing.T) {
+	left := finding("a-001", "a", protocol.SeverityP2, 0.8, 10, 10)
+	right := finding("b-001", "b", protocol.SeverityP2, 0.8, 10, 10)
+	left.Location.File = "Foo.py"
+	right.Location.File = "foo.py"
+
+	assert.Len(t, GroupFindings([]protocol.CandidateFinding{left, right}), 2)
+}
+
+func TestGroupFindingsKeepsCaseSensitiveEvidenceSeparate(t *testing.T) {
+	left := finding("a-001", "a", protocol.SeverityP2, 0.8, 10, 10)
+	right := finding("b-001", "b", protocol.SeverityP2, 0.8, 10, 10)
+	left.Evidence.ViolatedInvariant = "key A must remain valid"
+	right.Evidence.ViolatedInvariant = "key a must remain valid"
+
+	assert.Len(t, GroupFindings([]protocol.CandidateFinding{left, right}), 2)
+}
+
 func TestGroupFindingsKeepsDisjointLocationsSeparate(t *testing.T) {
 	left := finding("a-001", "a", protocol.SeverityP2, 0.8, 10, 11)
 	right := finding("b-001", "b", protocol.SeverityP2, 0.8, 20, 21)
