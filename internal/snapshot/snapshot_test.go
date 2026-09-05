@@ -67,6 +67,36 @@ func TestAcquireCommitAndBranch(t *testing.T) {
 	require.NoError(t, branchSnapshot.Cleanup())
 }
 
+func TestAcquireCommitIgnoresInheritedGitDirectory(t *testing.T) {
+	repo := newRepository(t)
+	writeFile(t, filepath.Join(repo, "main.go"), "package demo\n\nconst value = 1\n")
+	gitCommand(t, repo, "add", "main.go")
+	gitCommand(t, repo, "commit", "-m", "first")
+	first := strings.TrimSpace(gitCommand(t, repo, "rev-parse", "HEAD"))
+	writeFile(t, filepath.Join(repo, "main.go"), "package demo\n\nconst value = 2\n")
+	gitCommand(t, repo, "add", "main.go")
+	gitCommand(t, repo, "commit", "-m", "second")
+
+	gitDir := filepath.Join(repo, ".git")
+	headBefore, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
+	require.NoError(t, err)
+	indexBefore, err := os.ReadFile(filepath.Join(gitDir, "index"))
+	require.NoError(t, err)
+	t.Setenv("GIT_DIR", gitDir)
+
+	snapshot, err := Acquire(context.Background(), Request{Repository: repo, Source: SourceCommit, Commit: first})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, snapshot.Cleanup()) })
+
+	headAfter, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
+	require.NoError(t, err)
+	indexAfter, err := os.ReadFile(filepath.Join(gitDir, "index"))
+	require.NoError(t, err)
+	assert.Equal(t, headBefore, headAfter)
+	assert.Equal(t, indexBefore, indexAfter)
+	assert.Equal(t, first, snapshot.HeadSHA)
+}
+
 func TestAcquireWorktreeRejectsEscapingUntrackedSymlink(t *testing.T) {
 	repo := newRepository(t)
 	writeFile(t, filepath.Join(repo, "main.go"), "package demo\n")

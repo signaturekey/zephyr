@@ -367,6 +367,7 @@ func git(ctx context.Context, input []byte, args ...string) ([]byte, error) {
 
 func gitExit(ctx context.Context, input []byte, args ...string) ([]byte, int, error) {
 	command := exec.CommandContext(ctx, "git", args...)
+	command.Env = gitEnvironment(os.Environ())
 	if input != nil {
 		command.Stdin = bytes.NewReader(input)
 	}
@@ -382,4 +383,23 @@ func gitExit(ctx context.Context, input []byte, args ...string) ([]byte, int, er
 		return stdout.Bytes(), exit.ExitCode(), fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.Bytes(), -1, fmt.Errorf("run git: %w", err)
+}
+
+func gitEnvironment(environment []string) []string {
+	blocked := map[string]struct{}{
+		"GIT_COMMON_DIR":                   {},
+		"GIT_DIR":                          {},
+		"GIT_INDEX_FILE":                   {},
+		"GIT_OBJECT_DIRECTORY":             {},
+		"GIT_ALTERNATE_OBJECT_DIRECTORIES": {},
+		"GIT_WORK_TREE":                    {},
+	}
+	filtered := make([]string, 0, len(environment))
+	for _, value := range environment {
+		name, _, _ := strings.Cut(value, "=")
+		if _, ok := blocked[name]; !ok {
+			filtered = append(filtered, value)
+		}
+	}
+	return filtered
 }
