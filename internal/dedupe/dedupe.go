@@ -98,11 +98,11 @@ func better(left, right protocol.CandidateFinding) bool {
 }
 
 func normalize(value string) string {
-	return strings.Join(strings.Fields(strings.ToLower(value)), " ")
+	return strings.Join(strings.Fields(value), " ")
 }
 
 func normalizePath(value string) string {
-	return strings.TrimPrefix(strings.ReplaceAll(strings.ToLower(value), "\\", "/"), "./")
+	return strings.TrimPrefix(strings.ReplaceAll(value, "\\", "/"), "./")
 }
 
 func appendUnique(values []string, value string) []string {
