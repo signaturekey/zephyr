@@ -100,6 +100,54 @@ func TestAcquireCommitAndBranch(t *testing.T) {
 	require.NoError(t, branchSnapshot.Cleanup())
 }
 
+func TestAcquireBranchResolvesRefsInSourceRepository(t *testing.T) {
+	repo := newRepository(t)
+	gitCommand(t, repo, "branch", "-M", "main")
+	writeFile(t, filepath.Join(repo, "main.go"), "package demo\n\nconst value = 1\n")
+	gitCommand(t, repo, "add", "main.go")
+	gitCommand(t, repo, "commit", "-m", "base")
+	base := strings.TrimSpace(gitCommand(t, repo, "rev-parse", "HEAD"))
+
+	gitCommand(t, repo, "switch", "-c", "upstream")
+	writeFile(t, filepath.Join(repo, "main.go"), "package demo\n\nconst value = 2\n")
+	gitCommand(t, repo, "add", "main.go")
+	gitCommand(t, repo, "commit", "-m", "upstream")
+	upstream := strings.TrimSpace(gitCommand(t, repo, "rev-parse", "HEAD"))
+	gitCommand(t, repo, "switch", "main")
+	gitCommand(t, repo, "update-ref", "refs/remotes/origin/main", upstream)
+
+	snapshot, err := Acquire(context.Background(), Request{Repository: repo, Source: SourceBranch, Branch: "main", Base: "origin/main"})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, snapshot.Cleanup()) })
+
+	assert.Equal(t, base, snapshot.HeadSHA)
+	assert.Equal(t, upstream, snapshot.BaseSHA)
+	assert.Equal(t, base, snapshot.MergeBase)
+}
+
+func TestAcquireBranchSupportsFullHeadRef(t *testing.T) {
+	repo := newRepository(t)
+	baseBranch := strings.TrimSpace(gitCommand(t, repo, "branch", "--show-current"))
+	writeFile(t, filepath.Join(repo, "main.go"), "package demo\n")
+	gitCommand(t, repo, "add", "main.go")
+	gitCommand(t, repo, "commit", "-m", "base")
+	base := strings.TrimSpace(gitCommand(t, repo, "rev-parse", "HEAD"))
+	gitCommand(t, repo, "switch", "-c", "feature")
+	writeFile(t, filepath.Join(repo, "main.go"), "package demo\n\nconst feature = true\n")
+	gitCommand(t, repo, "add", "main.go")
+	gitCommand(t, repo, "commit", "-m", "feature")
+	head := strings.TrimSpace(gitCommand(t, repo, "rev-parse", "HEAD"))
+	gitCommand(t, repo, "switch", baseBranch)
+
+	snapshot, err := Acquire(context.Background(), Request{Repository: repo, Source: SourceBranch, Branch: "refs/heads/feature", Base: base})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, snapshot.Cleanup()) })
+
+	assert.Equal(t, head, snapshot.HeadSHA)
+	assert.Equal(t, base, snapshot.MergeBase)
+	assert.Contains(t, snapshot.Diff, "+const feature = true")
+}
+
 func TestAcquireCommitIgnoresInheritedGitDirectory(t *testing.T) {
 	repo := newRepository(t)
 	writeFile(t, filepath.Join(repo, "main.go"), "package demo\n\nconst value = 1\n")
