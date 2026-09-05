@@ -20,6 +20,18 @@ func TestDiffLineIndexUsesOldSideForDeletedFile(t *testing.T) {
 	assert.True(t, diffContainsLineRange(diff, "deleted.go", 1, 1), "deleted source line was not indexed")
 }
 
+func TestDiffLineIndexKeepsHunksOpenForDiffLikeCode(t *testing.T) {
+	diff := "diff --git a/query.sql b/query.sql\n" +
+		"--- a/query.sql\n+++ b/query.sql\n" +
+		"@@ -1 +1,2 @@\n--- comment\n+-- comment\n+DELETE FROM users\n" +
+		"diff --git a/value.go b/value.go\n" +
+		"--- a/value.go\n+++ b/value.go\n" +
+		"@@ -1 +1,2 @@\n+++ value\n+panic(\"unexpected\")\n"
+
+	assert.True(t, diffContainsLineRange(diff, "query.sql", 2, 2), "line after deleted SQL comment was not indexed")
+	assert.True(t, diffContainsLineRange(diff, "value.go", 2, 2), "line after added ++ value was not indexed")
+}
+
 func TestDiffLineIndexDoesNotTrustTruncatedHunkCount(t *testing.T) {
 	diff := "--- a/main.go\n+++ b/main.go\n@@ -1,100 +1,100 @@\n first\n+second\n[ZEPHYR TRUNCATED]\n"
 	assert.True(t, diffContainsLineRange(diff, "main.go", 1, 2), "present immutable lines were not indexed")

@@ -39,10 +39,10 @@ func diffLineIndex(diff string) map[string][]lineRange {
 		case strings.HasPrefix(line, "diff --git "):
 			oldPath, newPath, currentPath = "", "", ""
 			inHunk = false
-		case strings.HasPrefix(line, "--- "):
+		case !inHunk && strings.HasPrefix(line, "--- "):
 			oldPath = parsePatchPath(strings.TrimPrefix(line, "--- "), "a/")
 			inHunk = false
-		case strings.HasPrefix(line, "+++ "):
+		case !inHunk && strings.HasPrefix(line, "+++ "):
 			newPath = parsePatchPath(strings.TrimPrefix(line, "+++ "), "b/")
 			deleted = newPath == "" && oldPath != ""
 			if deleted {
@@ -141,10 +141,10 @@ func diffVisibleContent(diff, expectedPath string) string {
 		case strings.HasPrefix(line, "diff --git "):
 			oldPath, newPath, currentPath = "", "", ""
 			inHunk = false
-		case strings.HasPrefix(line, "--- "):
+		case !inHunk && strings.HasPrefix(line, "--- "):
 			oldPath = parsePatchPath(strings.TrimPrefix(line, "--- "), "a/")
 			inHunk = false
-		case strings.HasPrefix(line, "+++ "):
+		case !inHunk && strings.HasPrefix(line, "+++ "):
 			newPath = parsePatchPath(strings.TrimPrefix(line, "+++ "), "b/")
 			deleted = newPath == "" && oldPath != ""
 			if deleted {
