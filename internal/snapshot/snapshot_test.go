@@ -40,6 +40,22 @@ func TestAcquireWorktreeCombinesTrackedAndUntrackedChanges(t *testing.T) {
 	assert.Equal(t, before, gitCommand(t, repo, "status", "--porcelain"))
 }
 
+func TestAcquireWorktreeIgnoresDiffNoPrefixConfig(t *testing.T) {
+	repo := newRepository(t)
+	writeFile(t, filepath.Join(repo, "main.go"), "package demo\n\nconst value = 1\n")
+	gitCommand(t, repo, "add", "main.go")
+	gitCommand(t, repo, "commit", "-m", "initial")
+	writeFile(t, filepath.Join(repo, "main.go"), "package demo\n\nconst value = 2\n")
+	gitCommand(t, repo, "config", "diff.noprefix", "true")
+
+	snapshot, err := Acquire(context.Background(), Request{Repository: repo, Source: SourceWorktree})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, snapshot.Cleanup()) })
+
+	assert.Equal(t, []string{"main.go"}, snapshot.ChangedPaths)
+	assert.Contains(t, snapshot.Diff, "diff --git a/main.go b/main.go")
+}
+
 func TestAcquireWorktreeUsesFrozenSnapshotForChangedPaths(t *testing.T) {
 	repo := newRepository(t)
 	writeFile(t, filepath.Join(repo, "f.go"), "package demo\n\nconst f = 1\n")

@@ -126,7 +126,7 @@ func acquireWorktree(ctx context.Context, snapshot *Snapshot, repository string)
 	if _, err := git(ctx, nil, "-C", snapshot.Root, "checkout", "--quiet", "--detach", snapshot.HeadSHA); err != nil {
 		return fmt.Errorf("checkout snapshot HEAD: %w", err)
 	}
-	trackedDiff, err := git(ctx, nil, "-C", repoRoot, "diff", "--binary", "--find-renames", "HEAD", "--")
+	trackedDiff, err := git(ctx, nil, "-C", repoRoot, "diff", "--binary", "--find-renames", "--src-prefix=a/", "--dst-prefix=b/", "HEAD", "--")
 	if err != nil {
 		return fmt.Errorf("collect worktree diff: %w", err)
 	}
@@ -150,7 +150,7 @@ func acquireWorktree(ctx context.Context, snapshot *Snapshot, repository string)
 	var diff bytes.Buffer
 	diff.Write(trackedDiff)
 	for _, relative := range snapshot.Untracked {
-		part, code, err := gitExit(ctx, nil, "-C", snapshot.Root, "diff", "--no-index", "--binary", "--", "/dev/null", relative)
+		part, code, err := gitExit(ctx, nil, "-C", snapshot.Root, "diff", "--no-index", "--binary", "--src-prefix=a/", "--dst-prefix=b/", "--", "/dev/null", relative)
 		if code != 0 && code != 1 {
 			return fmt.Errorf("build untracked diff for %q: %w", relative, err)
 		}
@@ -202,7 +202,7 @@ func acquireCommit(ctx context.Context, snapshot *Snapshot, repository, commit s
 	if len(fields) > 1 {
 		base = fields[1]
 	}
-	diff, err := git(ctx, nil, "-C", snapshot.Root, "diff", "--binary", "--find-renames", base, head, "--")
+	diff, err := git(ctx, nil, "-C", snapshot.Root, "diff", "--binary", "--find-renames", "--src-prefix=a/", "--dst-prefix=b/", base, head, "--")
 	if err != nil {
 		return fmt.Errorf("build commit diff: %w", err)
 	}
@@ -250,7 +250,7 @@ func acquireBranch(ctx context.Context, snapshot *Snapshot, repository, branch, 
 	if _, err := git(ctx, nil, "-C", snapshot.Root, "checkout", "--quiet", "--detach", head); err != nil {
 		return fmt.Errorf("checkout branch head: %w", err)
 	}
-	diff, err := git(ctx, nil, "-C", snapshot.Root, "diff", "--binary", "--find-renames", mergeBase, head, "--")
+	diff, err := git(ctx, nil, "-C", snapshot.Root, "diff", "--binary", "--find-renames", "--src-prefix=a/", "--dst-prefix=b/", mergeBase, head, "--")
 	if err != nil {
 		return fmt.Errorf("build branch diff: %w", err)
 	}
