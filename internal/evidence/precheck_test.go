@@ -27,6 +27,25 @@ func TestPrecheckAcceptsConcreteChangedLine(t *testing.T) {
 	assert.Empty(t, report.Rejected)
 }
 
+func TestPrecheckAcceptsHighSeverityEvidenceFromDeletedCode(t *testing.T) {
+	cfg, err := config.LoadBytes(nil)
+	require.NoError(t, err)
+	code := "if divisor == 0 { return 0 }"
+	finding := protocol.CandidateFinding{
+		ID: "code-reviewer-001", Role: "code-reviewer", Severity: protocol.SeverityP1, Category: "correctness", Title: "removed division guard",
+		Location: protocol.FindingLocation{File: "calc.go", LineStart: 1},
+		Evidence: protocol.FindingEvidence{Code: &code, ExecutionPath: "division receives an unchecked divisor", ViolatedInvariant: "division by zero must be prevented", FalsifierChecked: "callers may pass zero"},
+		Impact:   "request panics", Recommendation: "restore the guard", Confidence: 0.9,
+	}
+	diff := "diff --git a/calc.go b/calc.go\n--- a/calc.go\n+++ b/calc.go\n@@ -1,2 +1 @@\n-if divisor == 0 { return 0 }\n return total / divisor\n"
+	report := Precheck(protocol.CandidateEnvelope{Version: 1, RunID: "run", Role: "code-reviewer", Findings: []protocol.CandidateFinding{finding}}, Scope{
+		RunID: "run", Diff: diff, ChangedFiles: []string{"calc.go"}, Config: cfg,
+	})
+
+	assert.Len(t, report.Accepted, 1)
+	assert.Empty(t, report.Rejected)
+}
+
 func TestPrecheckRejectsLocationOutsideDiff(t *testing.T) {
 	cfg, err := config.LoadBytes(nil)
 	require.NoError(t, err)

@@ -158,10 +158,10 @@ func diffVisibleContent(diff, expectedPath string) string {
 		case inHunk && currentPath == expectedPath && strings.HasPrefix(line, " "):
 			builder.WriteString(line[1:])
 			builder.WriteByte('\n')
-		case inHunk && currentPath == expectedPath && !deleted && strings.HasPrefix(line, "+"):
+		case inHunk && currentPath == expectedPath && strings.HasPrefix(line, "+"):
 			builder.WriteString(line[1:])
 			builder.WriteByte('\n')
-		case inHunk && currentPath == expectedPath && deleted && strings.HasPrefix(line, "-"):
+		case inHunk && currentPath == expectedPath && strings.HasPrefix(line, "-"):
 			builder.WriteString(line[1:])
 			builder.WriteByte('\n')
 		case inHunk && strings.HasPrefix(line, "-"):
