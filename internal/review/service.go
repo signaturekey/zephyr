@@ -175,6 +175,9 @@ func (service Service) Run(ctx context.Context, request Request) (Result, error)
 		}))
 	}
 	candidates := evidence.MergeCandidateReports(runID, prechecks)
+	if err := evidence.ValidateCandidateLimit(candidates); err != nil {
+		return Result{}, fmt.Errorf("evidence gate candidate limit: %w", err)
+	}
 	verdicts := protocol.EvidenceVerdictEnvelope{Version: protocol.ProtocolVersion, RunID: runID, Verdicts: []protocol.EvidenceVerdict{}}
 	evidenceStatus := "skipped-no-candidates"
 	if len(candidates.Findings) > 0 {
