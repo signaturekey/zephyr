@@ -10,11 +10,11 @@ model_policy:
     fast: false
   stages:
     probe:
-      model: gpt-5.6-luna
+      model: gpt-6-luna
       effort: low
       fast: true
     semantic_router:
-      model: gpt-5.6-luna
+      model: gpt-6-luna
       fast: true
     reviewers:
       roles:
@@ -35,7 +35,7 @@ model_policy:
         qa-expert: {}
         code-simplifier: {}
     evidence_gate:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
 
 limits:
   max_parallel_reviewers: 8

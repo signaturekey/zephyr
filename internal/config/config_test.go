@@ -23,6 +23,9 @@ func TestLoadEmbeddedDefaults(t *testing.T) {
 		assert.NotEmpty(t, settings.Model, "embedded defaults omit model for %q", process)
 		assert.NotEmpty(t, settings.Effort, "embedded defaults omit effort for %q", process)
 	}
+	assertPolicyEntry(t, policy, ProcessProbe, ModelSettings{Model: "gpt-6-luna", Effort: "low", Fast: true})
+	assertPolicyEntry(t, policy, ProcessSemanticRouter, ModelSettings{Model: "gpt-6-luna", Effort: "high", Fast: true})
+	assertPolicyEntry(t, policy, ProcessEvidenceGate, ModelSettings{Model: "gpt-6-sol", Effort: "high"})
 }
 
 func TestLoadBytesMergesProjectConfig(t *testing.T) {

@@ -13,11 +13,11 @@ func TestResolveModelPolicyInheritsPartialRoleOverride(t *testing.T) {
 	policy, err := ResolveModelPolicy(Config{ModelPolicy: ModelPolicy{
 		Default: ModelSettings{Model: "gpt-5.6-terra", Effort: "medium"},
 		Stages: ModelPolicyStages{
-			Probe: ModelSettings{Model: "gpt-5.6-luna", Effort: "low", Fast: true, fastSet: true},
+			Probe: ModelSettings{Model: "gpt-6-luna", Effort: "low", Fast: true, fastSet: true},
 			Reviewers: ReviewerModelPolicy{
 				Default: ModelSettings{Effort: "high", Fast: true, fastSet: true},
 				Roles: map[string]ModelSettings{
-					RoleSecurityAuditor: {Model: "gpt-5.6-sol"},
+					RoleSecurityAuditor: {Model: "gpt-6-sol"},
 				},
 			},
 		},
@@ -27,20 +27,20 @@ func TestResolveModelPolicyInheritsPartialRoleOverride(t *testing.T) {
 	}
 
 	assertPolicyEntry(t, policy, reviewerProcess(RoleCodeReviewer), ModelSettings{Model: "gpt-5.6-terra", Effort: "high", Fast: true})
-	assertPolicyEntry(t, policy, reviewerProcess(RoleSecurityAuditor), ModelSettings{Model: "gpt-5.6-sol", Effort: "high", Fast: true})
-	assertPolicyEntry(t, policy, ProcessProbe, ModelSettings{Model: "gpt-5.6-luna", Effort: "low", Fast: true})
+	assertPolicyEntry(t, policy, reviewerProcess(RoleSecurityAuditor), ModelSettings{Model: "gpt-6-sol", Effort: "high", Fast: true})
+	assertPolicyEntry(t, policy, ProcessProbe, ModelSettings{Model: "gpt-6-luna", Effort: "low", Fast: true})
 }
 
 func TestResolveModelPolicyMarshalsStableProcessOrder(t *testing.T) {
 	policy, err := ResolveModelPolicy(Config{ModelPolicy: ModelPolicy{
 		Default: ModelSettings{Model: "gpt-5.6-terra", Effort: "medium"},
 		Stages: ModelPolicyStages{
-			Probe:          ModelSettings{Model: "gpt-5.6-luna", Effort: "low", Fast: true, fastSet: true},
+			Probe:          ModelSettings{Model: "gpt-6-luna", Effort: "low", Fast: true, fastSet: true},
 			SemanticRouter: ModelSettings{Effort: "low"},
 			Reviewers: ReviewerModelPolicy{
 				Default: ModelSettings{Effort: "high", Fast: true, fastSet: true},
 			},
-			EvidenceGate: ModelSettings{Model: "gpt-5.6-sol", Effort: "xhigh"},
+			EvidenceGate: ModelSettings{Model: "gpt-6-sol", Effort: "xhigh"},
 		},
 	}})
 	if err != nil {
@@ -55,13 +55,13 @@ func TestResolveModelPolicyMarshalsStableProcessOrder(t *testing.T) {
 	if got, want := lines[0], "zephyr-codex-model-policy-v1"; got != want {
 		t.Fatalf("header = %q, want %q", got, want)
 	}
-	if got, want := lines[1], "probe\t-\tgpt-5.6-luna\tlow\ttrue"; got != want {
+	if got, want := lines[1], "probe\t-\tgpt-6-luna\tlow\ttrue"; got != want {
 		t.Fatalf("first process = %q, want %q", got, want)
 	}
 	if got, want := lines[2], "semantic-router\t-\tgpt-5.6-terra\tlow\tfalse"; got != want {
 		t.Fatalf("second process = %q, want %q", got, want)
 	}
-	if got, want := lines[len(lines)-1], "evidence-gate\t-\tgpt-5.6-sol\txhigh\tfalse"; got != want {
+	if got, want := lines[len(lines)-1], "evidence-gate\t-\tgpt-6-sol\txhigh\tfalse"; got != want {
 		t.Fatalf("last process = %q, want %q", got, want)
 	}
 }
@@ -73,8 +73,8 @@ func TestLoadBytesRejectsInvalidModelPolicy(t *testing.T) {
 		want string
 	}{
 		{name: "unknown field", yaml: "version: 1\nmodel_policy:\n  default:\n    model: inherit\n    speed: fast\n", want: "field speed not found"},
-		{name: "unknown reviewer", yaml: "version: 1\nmodel_policy:\n  stages:\n    reviewers:\n      roles:\n        oracle:\n          model: gpt-5.6-sol\n", want: "unknown reviewer role"},
-		{name: "unsafe model", yaml: "version: 1\nmodel_policy:\n  default:\n    model: 'gpt-5.6-sol bad'\n", want: "model must be"},
+		{name: "unknown reviewer", yaml: "version: 1\nmodel_policy:\n  stages:\n    reviewers:\n      roles:\n        oracle:\n          model: gpt-6-sol\n", want: "unknown reviewer role"},
+		{name: "unsafe model", yaml: "version: 1\nmodel_policy:\n  default:\n    model: 'gpt-6-sol bad'\n", want: "model must be"},
 		{name: "invalid effort", yaml: "version: 1\nmodel_policy:\n  default:\n    effort: extreme\n", want: "effort must be"},
 	}
 
