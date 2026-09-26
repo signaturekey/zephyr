@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/signaturekey/zephyr/internal/agent"
 	"github.com/signaturekey/zephyr/internal/config"
 	"github.com/signaturekey/zephyr/internal/evidence"
@@ -86,6 +87,7 @@ func (service Service) Run(ctx context.Context, request Request) (Result, error)
 	if err != nil {
 		return Result{}, err
 	}
+	filterSnapshot(snap, cfg.DiffExcludedPaths)
 	maxParallel := request.MaxParallel
 	if maxParallel == 0 {
 		maxParallel = cfg.Limits.MaxParallelReviewers
@@ -219,6 +221,40 @@ func (service Service) Run(ctx context.Context, request Request) (Result, error)
 	}
 	jsonReport = append(jsonReport, '\n')
 	return Result{Review: finalReport, Markdown: markdown, JSON: jsonReport, SnapshotRoot: snap.Root}, nil
+}
+
+func filterSnapshot(snap *snapshot.Snapshot, patterns []string) {
+	keep := func(path string) bool {
+		for _, pattern := range patterns {
+			matched, err := doublestar.PathMatch(filepath.ToSlash(pattern), filepath.ToSlash(path))
+			if err == nil && matched {
+				return false
+			}
+		}
+		return true
+	}
+	paths := snap.ChangedPaths[:0]
+	for _, path := range snap.ChangedPaths {
+		if keep(path) {
+			paths = append(paths, path)
+		}
+	}
+	snap.ChangedPaths = paths
+	sections := strings.Split(snap.Diff, "diff --git ")
+	var filtered strings.Builder
+	for _, section := range sections[1:] {
+		lines := strings.SplitN(section, "\n", 2)
+		fields := strings.Fields(lines[0])
+		if len(fields) < 2 {
+			continue
+		}
+		path := strings.TrimPrefix(fields[len(fields)-1], "b/")
+		if keep(path) {
+			filtered.WriteString("diff --git ")
+			filtered.WriteString(section)
+		}
+	}
+	snap.Diff = filtered.String()
 }
 
 func loadConfig(explicit, snapshotRoot, user string) (config.Config, error) {

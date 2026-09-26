@@ -22,6 +22,20 @@ type fakeRuntime struct {
 	gateRuns int
 }
 
+func TestFilterSnapshotExcludesConfiguredPathsFromDiffAndIndex(t *testing.T) {
+	snap := &snapshot.Snapshot{
+		ChangedPaths: []string{".agents/skills/demo/SKILL.md", "src/__snapshots__/view.snap.png", "src/app.ts"},
+		Diff: "diff --git a/.agents/skills/demo/SKILL.md b/.agents/skills/demo/SKILL.md\n+skill\n" +
+			"diff --git a/src/__snapshots__/view.snap.png b/src/__snapshots__/view.snap.png\n+binary\n" +
+			"diff --git a/src/app.ts b/src/app.ts\n+const value = 1\n",
+	}
+	filterSnapshot(snap, []string{".agents/**", "**/__snapshots__/**"})
+	assert.Equal(t, []string{"src/app.ts"}, snap.ChangedPaths)
+	assert.Contains(t, snap.Diff, "src/app.ts")
+	assert.NotContains(t, snap.Diff, ".agents/")
+	assert.NotContains(t, snap.Diff, "__snapshots__")
+}
+
 func (runtime *fakeRuntime) Route(_ context.Context, request routing.Request, _ *snapshot.Snapshot, _ []agent.ContextDocument) (protocol.SemanticRoutingEnvelope, error) {
 	result := protocol.SemanticRoutingEnvelope{Version: 1, RunID: request.RunID}
 	for _, candidate := range request.Candidates {

@@ -48,15 +48,16 @@ const (
 )
 
 type Config struct {
-	Version         int                   `json:"version" yaml:"version"`
-	Profile         Profile               `json:"profile" yaml:"profile"`
-	Language        string                `json:"language" yaml:"language"`
-	Limits          Limits                `json:"limits" yaml:"limits"`
-	Roles           map[string]RoleConfig `json:"roles" yaml:"roles"`
-	Routing         []RoutingRule         `json:"routing" yaml:"routing"`
-	ModelPolicy     ModelPolicy           `json:"model_policy" yaml:"model_policy"`
-	RestrictedPaths []string              `json:"restricted_paths" yaml:"restricted_paths"`
-	Redaction       Redaction             `json:"redaction" yaml:"redaction"`
+	Version           int                   `json:"version" yaml:"version"`
+	Profile           Profile               `json:"profile" yaml:"profile"`
+	Language          string                `json:"language" yaml:"language"`
+	Limits            Limits                `json:"limits" yaml:"limits"`
+	Roles             map[string]RoleConfig `json:"roles" yaml:"roles"`
+	Routing           []RoutingRule         `json:"routing" yaml:"routing"`
+	ModelPolicy       ModelPolicy           `json:"model_policy" yaml:"model_policy"`
+	RestrictedPaths   []string              `json:"restricted_paths" yaml:"restricted_paths"`
+	DiffExcludedPaths []string              `json:"diff_excluded_paths" yaml:"diff_excluded_paths"`
+	Redaction         Redaction             `json:"redaction" yaml:"redaction"`
 }
 
 type Limits struct {
@@ -255,6 +256,11 @@ func Validate(cfg Config) error {
 			return invalid("restricted_paths[%d]: %v", i, err)
 		}
 	}
+	for i, pattern := range cfg.DiffExcludedPaths {
+		if err := validatePattern(pattern); err != nil {
+			return invalid("diff_excluded_paths[%d]: %v", i, err)
+		}
+	}
 	for i, pattern := range cfg.Redaction.DenyPatterns {
 		if err := validatePattern(pattern); err != nil {
 			return invalid("redaction.deny_patterns[%d]: %v", i, err)
@@ -268,15 +274,16 @@ func Validate(cfg Config) error {
 }
 
 type partialConfig struct {
-	Version         *int                         `yaml:"version"`
-	Profile         *Profile                     `yaml:"profile"`
-	Language        *string                      `yaml:"language"`
-	Limits          *partialLimits               `yaml:"limits"`
-	Roles           map[string]partialRoleConfig `yaml:"roles"`
-	Routing         *[]RoutingRule               `yaml:"routing"`
-	ModelPolicy     *partialModelPolicy          `yaml:"model_policy"`
-	RestrictedPaths *[]string                    `yaml:"restricted_paths"`
-	Redaction       *partialRedaction            `yaml:"redaction"`
+	Version           *int                         `yaml:"version"`
+	Profile           *Profile                     `yaml:"profile"`
+	Language          *string                      `yaml:"language"`
+	Limits            *partialLimits               `yaml:"limits"`
+	Roles             map[string]partialRoleConfig `yaml:"roles"`
+	Routing           *[]RoutingRule               `yaml:"routing"`
+	ModelPolicy       *partialModelPolicy          `yaml:"model_policy"`
+	RestrictedPaths   *[]string                    `yaml:"restricted_paths"`
+	DiffExcludedPaths *[]string                    `yaml:"diff_excluded_paths"`
+	Redaction         *partialRedaction            `yaml:"redaction"`
 }
 
 type partialLimits struct {
@@ -381,6 +388,9 @@ func apply(dst *Config, src partialConfig) {
 	if src.RestrictedPaths != nil {
 		dst.RestrictedPaths = append(dst.RestrictedPaths, (*src.RestrictedPaths)...)
 	}
+	if src.DiffExcludedPaths != nil {
+		dst.DiffExcludedPaths = append(dst.DiffExcludedPaths, (*src.DiffExcludedPaths)...)
+	}
 	if src.Redaction != nil {
 		if src.Redaction.Enabled != nil {
 			dst.Redaction.Enabled = *src.Redaction.Enabled
@@ -445,6 +455,7 @@ func normalize(cfg *Config) {
 		cfg.Routing[i].AddRoles = uniqueStrings(cfg.Routing[i].AddRoles)
 	}
 	cfg.RestrictedPaths = uniqueStrings(cfg.RestrictedPaths)
+	cfg.DiffExcludedPaths = uniqueStrings(cfg.DiffExcludedPaths)
 	cfg.Redaction.DenyPatterns = uniqueStrings(cfg.Redaction.DenyPatterns)
 }
 
